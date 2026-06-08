@@ -36,6 +36,26 @@ fn count_files(path: &std::path::Path) -> usize {
     count
 }
 
+fn first_file(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+
+            if path.is_file() {
+                return Some(path);
+            }
+
+            if path.is_dir() {
+                if let Some(found) = first_file(&path) {
+                    return Some(found);
+                }
+            }
+        }
+    }
+
+    None
+}
+
 #[test]
 fn mvp_backup_snapshot_and_restore_round_trip() {
     let bin = env!("CARGO_BIN_EXE_ironvault");
@@ -244,6 +264,46 @@ log_level = "info"
         object_count, 4,
         "expected 4 unique chunk objects, got {}",
         object_count
+    );
+
+    let verify_good = Command::new(bin)
+        .args(["verify", "--repo"])
+        .arg(&repo)
+        .output()
+        .unwrap();
+    assert!(
+        verify_good.status.success(),
+        "verify failed before corruption\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&verify_good.stdout),
+        String::from_utf8_lossy(&verify_good.stderr)
+    );
+    let verify_good_stdout = String::from_utf8_lossy(&verify_good.stdout);
+    assert!(
+        verify_good_stdout.contains("Repository is valid"),
+        "verify stdout before corruption was:\n{}",
+        verify_good_stdout
+    );
+
+    let corrupt_chunk =
+        first_file(&repo.join("objects")).expect("expected at least one chunk object");
+    fs::remove_file(&corrupt_chunk).unwrap();
+
+    let verify_bad = Command::new(bin)
+        .args(["verify", "--repo"])
+        .arg(&repo)
+        .output()
+        .unwrap();
+    assert!(
+        verify_bad.status.success(),
+        "verify command should report errors without crashing\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&verify_bad.stdout),
+        String::from_utf8_lossy(&verify_bad.stderr)
+    );
+    let verify_bad_stdout = String::from_utf8_lossy(&verify_bad.stdout);
+    assert!(
+        verify_bad_stdout.contains("Repository has errors"),
+        "verify stdout after corruption was:\n{}",
+        verify_bad_stdout
     );
 
     let _ = fs::remove_dir_all(root);

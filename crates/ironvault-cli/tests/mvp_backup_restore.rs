@@ -17,6 +17,23 @@ fn unique_test_root() -> std::path::PathBuf {
         ))
 }
 
+fn count_files(path: &std::path::Path) -> usize {
+    let mut count = 0;
+
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                count += count_files(&path);
+            } else if path.is_file() {
+                count += 1;
+            }
+        }
+    }
+
+    count
+}
+
 #[test]
 fn mvp_backup_snapshot_and_restore_round_trip() {
     let bin = env!("CARGO_BIN_EXE_ironvault");
@@ -34,6 +51,7 @@ fn mvp_backup_snapshot_and_restore_round_trip() {
 
     fs::write(source.join("test.txt"), "hello ironvault\n").unwrap();
     fs::write(subdir.join("second.txt"), "second file\n").unwrap();
+    fs::write(subdir.join("duplicate.txt"), "hello ironvault\n").unwrap();
 
     let config = format!(
         r#"[repo]
@@ -44,7 +62,7 @@ sources = ["{source}"]
 one_file_system = true
 follow_symlinks = false
 parallelism = "4"
-chunk_size = "4MiB"
+chunk_size = "8B"
 compression = "zstd"
 compression_level = 10
 
@@ -116,7 +134,7 @@ log_level = "info"
 
     let backup_stdout = String::from_utf8_lossy(&backup.stdout);
     assert!(
-        backup_stdout.contains("Files: 2"),
+        backup_stdout.contains("Files: 3"),
         "backup stdout was:\n{}",
         backup_stdout
     );
@@ -129,7 +147,7 @@ log_level = "info"
     assert!(snapshots.status.success(), "snapshots failed");
     let snapshots_stdout = String::from_utf8_lossy(&snapshots.stdout);
     assert!(
-        snapshots_stdout.contains("2 files"),
+        snapshots_stdout.contains("3 files"),
         "snapshots stdout was:\n{}",
         snapshots_stdout
     );
@@ -155,6 +173,17 @@ log_level = "info"
     assert_eq!(
         fs::read_to_string(restore.join("source/subdir/second.txt")).unwrap(),
         "second file\n"
+    );
+    assert_eq!(
+        fs::read_to_string(restore.join("source/subdir/duplicate.txt")).unwrap(),
+        "hello ironvault\n"
+    );
+
+    let object_count = count_files(&repo.join("objects"));
+    assert_eq!(
+        object_count, 4,
+        "expected 4 unique chunk objects, got {}",
+        object_count
     );
 
     let _ = fs::remove_dir_all(root);

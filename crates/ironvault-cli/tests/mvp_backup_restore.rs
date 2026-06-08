@@ -43,12 +43,14 @@ fn mvp_backup_snapshot_and_restore_round_trip() {
 
     let source = root.join("source");
     let subdir = source.join("subdir");
+    let empty_dir = source.join("empty-dir");
     let repo = root.join("repo");
     let restore = root.join("restore");
     let logs = root.join("logs");
     let config_path = root.join("ironvault.test.toml");
 
     fs::create_dir_all(&subdir).unwrap();
+    fs::create_dir_all(&empty_dir).unwrap();
     fs::create_dir_all(&logs).unwrap();
 
     fs::write(source.join("test.txt"), "hello ironvault\n").unwrap();
@@ -60,6 +62,13 @@ fn mvp_backup_snapshot_and_restore_round_trip() {
 
     let known_mtime = filetime::FileTime::from_unix_time(1_700_000_000, 0);
     filetime::set_file_mtime(&source_test_file, known_mtime).unwrap();
+
+    #[cfg(unix)]
+    {
+        fs::set_permissions(&empty_dir, fs::Permissions::from_mode(0o750)).unwrap();
+        filetime::set_file_mtime(&empty_dir, known_mtime).unwrap();
+        std::os::unix::fs::symlink("test.txt", source.join("link-to-test")).unwrap();
+    }
 
     let config = format!(
         r#"[repo]
@@ -195,6 +204,40 @@ log_level = "info"
 
     let restored_mtime = filetime::FileTime::from_last_modification_time(&restored_metadata);
     assert_eq!(restored_mtime.unix_seconds(), 1_700_000_000);
+
+    let restored_empty_dir = restore.join("source/empty-dir");
+    assert!(
+        restored_empty_dir.is_dir(),
+        "empty directory was not restored"
+    );
+
+    #[cfg(unix)]
+    {
+        let restored_empty_dir_metadata = fs::metadata(&restored_empty_dir).unwrap();
+        assert_eq!(
+            restored_empty_dir_metadata.permissions().mode() & 0o777,
+            0o750
+        );
+
+        let restored_empty_dir_mtime =
+            filetime::FileTime::from_last_modification_time(&restored_empty_dir_metadata);
+        assert_eq!(restored_empty_dir_mtime.unix_seconds(), 1_700_000_000);
+
+        let restored_link = restore.join("source/link-to-test");
+        let link_metadata = fs::symlink_metadata(&restored_link).unwrap();
+        assert!(
+            link_metadata.file_type().is_symlink(),
+            "symlink was not restored"
+        );
+        assert_eq!(
+            fs::read_link(&restored_link).unwrap(),
+            std::path::PathBuf::from("test.txt")
+        );
+        assert_eq!(
+            fs::read_to_string(&restored_link).unwrap(),
+            "hello ironvault\n"
+        );
+    }
 
     let object_count = count_files(&repo.join("objects"));
     assert_eq!(

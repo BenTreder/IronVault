@@ -189,6 +189,33 @@ log_level = "info"
         snapshots_stdout
     );
 
+    fs::create_dir_all(restore.join("source")).unwrap();
+    fs::write(
+        restore.join("source/test.txt"),
+        "existing file should stay safe\n",
+    )
+    .unwrap();
+
+    let restore_conflict_cmd = Command::new(bin)
+        .args(["restore", "--repo"])
+        .arg(&repo)
+        .args(["--snapshot", "latest", "--target"])
+        .arg(&restore)
+        .output()
+        .unwrap();
+    assert!(
+        !restore_conflict_cmd.status.success(),
+        "restore should refuse to overwrite existing files\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&restore_conflict_cmd.stdout),
+        String::from_utf8_lossy(&restore_conflict_cmd.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(restore.join("source/test.txt")).unwrap(),
+        "existing file should stay safe\n"
+    );
+
+    fs::remove_dir_all(&restore).unwrap();
+
     let restore_cmd = Command::new(bin)
         .args(["restore", "--repo"])
         .arg(&repo)

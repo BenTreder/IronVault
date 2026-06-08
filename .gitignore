@@ -1,0 +1,4 @@
+/target/
+/.ironvault-test/
+*.log
+.DS_Store

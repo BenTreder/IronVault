@@ -1,0 +1,15 @@
+{
+  "name": "ironvault-gui",
+  "version": "0.1.0",
+  "description": "Desktop frontend for IronVault backup system",
+  "dependencies": {
+    "vue": "^3.4.0",
+    "vue-router": "^4.2.0",
+    "pinia": "^4.1.0",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

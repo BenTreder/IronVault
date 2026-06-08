@@ -1,0 +1,21 @@
+[package]
+name = "ironvault-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Background daemon for IronVault"
+
+[[bin]]
+name = "ironvault-daemon"
+path = "src/main.rs"
+
+[dependencies]
+ironvault-core = { path = "../ironvault-core" }
+clap = { workspace = true }
+serde = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

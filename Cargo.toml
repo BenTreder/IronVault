@@ -1,0 +1,72 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ironvault-core",
+    "crates/ironvault-cli",
+    "crates/ironvault-daemon",
+]
+exclude = [
+    "frontend",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/chr0nichacker/IronVault"
+authors = ["chr0nichacker"]
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Core
+thiserror = "2.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+toml = "0.8"
+clap = { version = "4.5", features = ["derive"] }
+
+# Hashing
+blake3 = "1.5"
+
+# Compression
+zstd = "0.13"
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled", "serde_json"] }
+sqlite = "0.31"
+
+# Filesystem
+walkdir = "2.5"
+ignore = "0.4"
+nix = { version = "0.29", features = ["fs", "user", "process", "signal"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Parallelism
+rayon = "1.10"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+tracing-journald = "0.7"
+
+# Other
+tempfile = "3.15"
+uuid = { version = "1.11", features = ["v4"] }
+sha2 = "0.10"
+hex = "0.4"
+bytes = "1.6"
+humansize = "2.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.dev]
+opt-level = 0

@@ -1,0 +1,35 @@
+[package]
+name = "ironvault-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Core backup engine for IronVault"
+
+[dependencies]
+hex = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+toml = { workspace = true }
+blake3 = { workspace = true }
+zstd = { workspace = true }
+rusqlite = { workspace = true }
+walkdir = { workspace = true }
+ignore = { workspace = true }
+nix = { workspace = true }
+chrono = { workspace = true }
+rayon = { workspace = true }
+tracing = { workspace = true }
+tempfile = { workspace = true }
+uuid = { workspace = true }
+humansize = { workspace = true }
+bytes = { workspace = true }
+gethostname = "0.5"
+
+[dev-dependencies]
+tempfile = { workspace = true }

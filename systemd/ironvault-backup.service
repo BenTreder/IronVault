@@ -1,0 +1,28 @@
+[Unit]
+Description=IronVault Backup Service
+Documentation=man:ironvault(1)
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ironvault backup --config /etc/ironvault/config.toml
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true
+
+# Resource limits
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+Nice=19
+
+# Logging
+SyslogIdentifier=ironvault-backup
+
+[Install]
+WantedBy=multi-user.target

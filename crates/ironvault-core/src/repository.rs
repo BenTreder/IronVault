@@ -194,23 +194,32 @@ impl Repository {
             let metadata = std::fs::metadata(&file_path)?;
             let size = metadata.len();
 
-            let data = std::fs::read(&file_path)?;
-            let hash = crate::hasher::hash_data(&data);
-            let hash_hex = hex::encode(hash);
-            let object_rel_path = crate::hasher::hash_to_path(&hash);
-            let object_path = self.config.path.join("objects").join(object_rel_path);
+            let chunk_size = config.backup.parse_chunk_size()?;
+            let chunker = crate::chunker::Chunker::new(chunk_size);
+            let chunks = chunker.chunk_file(&file_path)?;
+            let mut chunk_hashes = Vec::new();
 
-            if let Some(parent) = object_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
+            for mut chunk in chunks {
+                let hash = chunk.hash();
+                let hash_hex = hex::encode(hash);
+                let object_rel_path = crate::hasher::hash_to_path(&hash);
+                let object_path = self.config.path.join("objects").join(object_rel_path);
 
-            if !object_path.exists() {
-                let compressed = if config.backup.compression == "zstd" {
-                    crate::compression::compress(&data, config.backup.compression_level)?
-                } else {
-                    data.clone()
-                };
-                std::fs::write(&object_path, compressed)?;
+                if let Some(parent) = object_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+
+                if !object_path.exists() {
+                    let data = chunk.data();
+                    let compressed = if config.backup.compression == "zstd" {
+                        crate::compression::compress(data, config.backup.compression_level)?
+                    } else {
+                        data.to_vec()
+                    };
+                    std::fs::write(&object_path, compressed)?;
+                }
+
+                chunk_hashes.push(hash_hex);
             }
 
             let relative_path = config
@@ -233,7 +242,7 @@ impl Repository {
                 });
 
             let mut entry = crate::FileEntry::new(relative_path, size);
-            entry.chunk_hashes.push(hash_hex);
+            entry.chunk_hashes = chunk_hashes;
             entry.compression = config.backup.compression.clone();
 
             snapshot.add_file(entry);

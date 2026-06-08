@@ -406,7 +406,184 @@ impl Repository {
     /// Verify repository integrity
     pub fn verify(&self) -> Result<bool> {
         info!("Verifying repository");
-        // TODO: Implement verification
+
+        let mut valid = true;
+
+        for required_dir in ["objects", "snapshots", "indexes"] {
+            let path = self.config.path.join(required_dir);
+            if !path.is_dir() {
+                tracing::warn!("Missing repository directory: {}", path.display());
+                valid = false;
+            }
+        }
+
+        let snapshots_path = self.config.path.join("snapshots");
+        if !snapshots_path.is_dir() {
+            tracing::warn!("Missing snapshots directory: {}", snapshots_path.display());
+            return Ok(false);
+        }
+
+        let mut snapshot_count = 0usize;
+        let mut checked_chunks = 0usize;
+
+        for entry in fs::read_dir(&snapshots_path)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if !path.is_file() {
+                continue;
+            }
+
+            let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+                tracing::warn!(
+                    "Skipping snapshot with invalid filename: {}",
+                    path.display()
+                );
+                valid = false;
+                continue;
+            };
+
+            if !file_name.ends_with(".snapshot.json") {
+                continue;
+            }
+
+            let json = match fs::read_to_string(&path) {
+                Ok(json) => json,
+                Err(e) => {
+                    tracing::warn!("Could not read snapshot {}: {}", path.display(), e);
+                    valid = false;
+                    continue;
+                }
+            };
+
+            let snapshot: Snapshot = match serde_json::from_str(&json) {
+                Ok(snapshot) => snapshot,
+                Err(e) => {
+                    tracing::warn!("Could not parse snapshot {}: {}", path.display(), e);
+                    valid = false;
+                    continue;
+                }
+            };
+
+            snapshot_count += 1;
+
+            for file in &snapshot.files {
+                for hash_hex in &file.chunk_hashes {
+                    checked_chunks += 1;
+
+                    match self.verify_chunk_object(hash_hex, &file.compression) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            tracing::warn!(
+                                snapshot = snapshot.name,
+                                file = file.path,
+                                chunk = hash_hex,
+                                "Chunk verification failed"
+                            );
+                            valid = false;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                snapshot = snapshot.name,
+                                file = file.path,
+                                chunk = hash_hex,
+                                error = %e,
+                                "Chunk verification errored"
+                            );
+                            valid = false;
+                        }
+                    }
+                }
+            }
+        }
+
+        if snapshot_count == 0 {
+            tracing::warn!("No snapshots found to verify");
+            valid = false;
+        }
+
+        if valid {
+            info!(
+                snapshots = snapshot_count,
+                chunks = checked_chunks,
+                "Repository verification passed"
+            );
+        } else {
+            tracing::warn!(
+                snapshots = snapshot_count,
+                chunks = checked_chunks,
+                "Repository verification failed"
+            );
+        }
+
+        Ok(valid)
+    }
+
+    /// Verify one stored chunk object against its expected BLAKE3 hash.
+    fn verify_chunk_object(&self, hash_hex: &str, compression: &str) -> Result<bool> {
+        let hash_bytes = match hex::decode(hash_hex) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                tracing::warn!("Invalid chunk hash hex {}: {}", hash_hex, e);
+                return Ok(false);
+            }
+        };
+
+        if hash_bytes.len() != 32 {
+            tracing::warn!(
+                hash = hash_hex,
+                len = hash_bytes.len(),
+                "Invalid chunk hash length"
+            );
+            return Ok(false);
+        }
+
+        let mut expected_hash = [0u8; 32];
+        expected_hash.copy_from_slice(&hash_bytes);
+
+        let object_rel_path = crate::hasher::hash_to_path(&expected_hash);
+        let object_path = self.config.path.join("objects").join(object_rel_path);
+
+        if !object_path.is_file() {
+            tracing::warn!(
+                hash = hash_hex,
+                path = object_path.display().to_string(),
+                "Missing chunk object"
+            );
+            return Ok(false);
+        }
+
+        let stored = fs::read(&object_path)?;
+
+        let data = if compression == "zstd" {
+            match crate::compression::decompress(&stored) {
+                Ok(data) => data,
+                Err(e) => {
+                    tracing::warn!(
+                        hash = hash_hex,
+                        path = object_path.display().to_string(),
+                        error = %e,
+                        "Could not decompress chunk object"
+                    );
+                    return Ok(false);
+                }
+            }
+        } else {
+            stored
+        };
+
+        let actual_hash = crate::hasher::hash_data(&data);
+        let actual_hash_hex = hex::encode(actual_hash);
+
+        if actual_hash_hex != hash_hex {
+            tracing::warn!(
+                expected = hash_hex,
+                actual = actual_hash_hex,
+                "Chunk hash mismatch"
+            );
+            return Ok(false);
+        }
+
         Ok(true)
     }
 

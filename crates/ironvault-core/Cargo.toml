@@ -9,6 +9,7 @@ rust-version.workspace = true
 description = "Core backup engine for IronVault"
 
 [dependencies]
+filetime = { workspace = true }
 hex = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }

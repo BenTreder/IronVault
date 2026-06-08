@@ -1,6 +1,7 @@
 //! Restore functionality for IronVault
 
 use crate::{IronVaultError, Result, Snapshot};
+use chrono::{DateTime, Utc};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -43,6 +44,7 @@ pub struct RestoreItem {
     pub permissions: u32,
     pub uid: u32,
     pub gid: u32,
+    pub mtime: DateTime<Utc>,
     pub chunk_hashes: Vec<String>,
     pub compression: String,
 }
@@ -82,6 +84,7 @@ impl RestoreManager {
                 permissions: file.permissions,
                 uid: file.uid,
                 gid: file.gid,
+                mtime: file.mtime.clone(),
                 chunk_hashes: file.chunk_hashes.clone(),
                 compression: file.compression.clone(),
             });
@@ -162,6 +165,13 @@ impl RestoreManager {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(target_path, fs::Permissions::from_mode(item.permissions))?;
         }
+
+        // Set modified time
+        let mtime = filetime::FileTime::from_unix_time(
+            item.mtime.timestamp(),
+            item.mtime.timestamp_subsec_nanos(),
+        );
+        filetime::set_file_mtime(target_path, mtime)?;
 
         Ok(true)
     }

@@ -21,3 +21,6 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 humansize = { workspace = true }
+
+[dev-dependencies]
+filetime = { workspace = true }

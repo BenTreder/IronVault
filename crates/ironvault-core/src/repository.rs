@@ -189,6 +189,8 @@ impl Repository {
 
         let files = self.scan_sources(config)?;
 
+        self.collect_structure_entries(config, &mut snapshot)?;
+
         for file_str in files {
             let file_path = std::path::PathBuf::from(&file_str);
             let metadata = std::fs::metadata(&file_path)?;
@@ -222,24 +224,7 @@ impl Repository {
                 chunk_hashes.push(hash_hex);
             }
 
-            let relative_path = config
-                .backup
-                .sources
-                .iter()
-                .find_map(|source| {
-                    file_path.strip_prefix(source).ok().map(|stripped| {
-                        source
-                            .file_name()
-                            .map(|name| std::path::PathBuf::from(name).join(stripped))
-                            .unwrap_or_else(|| stripped.to_path_buf())
-                    })
-                })
-                .unwrap_or_else(|| {
-                    file_path
-                        .file_name()
-                        .map(std::path::PathBuf::from)
-                        .unwrap_or_else(|| file_path.clone())
-                });
+            let relative_path = Self::relative_snapshot_path(config, &file_path);
 
             let mut entry = crate::FileEntry::new(relative_path, size);
 
@@ -262,6 +247,107 @@ impl Repository {
         // Store snapshot
         self.store_snapshot(&snapshot)?;
         Ok(snapshot)
+    }
+
+    /// Collect directory and symlink entries for the snapshot.
+    fn collect_structure_entries(&self, config: &Config, snapshot: &mut Snapshot) -> Result<()> {
+        for source in &config.backup.sources {
+            let mut walker = ignore::WalkBuilder::new(source);
+            walker
+                .follow_links(false)
+                .same_file_system(config.backup.one_file_system);
+
+            for entry in walker.build() {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(e) => {
+                        tracing::warn!("Error scanning structure path: {}", e);
+                        continue;
+                    }
+                };
+
+                let path = entry.path();
+
+                if Self::should_skip_snapshot_path(config, path) {
+                    continue;
+                }
+
+                let file_type = match entry.file_type() {
+                    Some(file_type) => file_type,
+                    None => continue,
+                };
+
+                if file_type.is_dir() {
+                    let metadata = std::fs::symlink_metadata(path)?;
+                    let relative_path = Self::relative_snapshot_path(config, path);
+                    let mut dir = crate::DirectoryEntry::new(relative_path);
+
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::MetadataExt;
+
+                        dir.permissions = metadata.mode() & 0o7777;
+                        dir.uid = metadata.uid();
+                        dir.gid = metadata.gid();
+                    }
+
+                    if let Ok(modified) = metadata.modified() {
+                        dir.mtime = chrono::DateTime::<chrono::Utc>::from(modified);
+                    }
+
+                    snapshot.add_directory(dir);
+                } else if file_type.is_symlink() {
+                    let target = std::fs::read_link(path)?;
+                    let relative_path = Self::relative_snapshot_path(config, path);
+                    snapshot.add_symlink(crate::SymlinkEntry::new(relative_path, target));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Convert an absolute source path into the path stored in a snapshot.
+    fn relative_snapshot_path(config: &Config, file_path: &std::path::Path) -> std::path::PathBuf {
+        config
+            .backup
+            .sources
+            .iter()
+            .find_map(|source| {
+                file_path.strip_prefix(source).ok().map(|stripped| {
+                    source
+                        .file_name()
+                        .map(|name| std::path::PathBuf::from(name).join(stripped))
+                        .unwrap_or_else(|| stripped.to_path_buf())
+                })
+            })
+            .unwrap_or_else(|| {
+                file_path
+                    .file_name()
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| file_path.to_path_buf())
+            })
+    }
+
+    /// Check explicit and default excludes for structure entries.
+    fn should_skip_snapshot_path(config: &Config, path: &std::path::Path) -> bool {
+        let path_str = path.to_string_lossy();
+
+        for exclude in &config.excludes.paths {
+            let exclude_str = exclude.to_string_lossy();
+            if path_str == exclude_str || path_str.starts_with(&format!("{}/", exclude_str)) {
+                return true;
+            }
+        }
+
+        for exclude in crate::config::default_exclusions() {
+            let exclude_str = exclude.to_string_lossy();
+            if path_str == exclude_str || path_str.starts_with(&format!("{}/", exclude_str)) {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Store a snapshot

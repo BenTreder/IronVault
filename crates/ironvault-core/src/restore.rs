@@ -153,6 +153,8 @@ impl RestoreManager {
         // Create target directory
         fs::create_dir_all(&plan.target)?;
 
+        self.create_directories(plan)?;
+
         // Restore files
         let mut restored = 0;
         for item in &plan.files {
@@ -161,8 +163,129 @@ impl RestoreManager {
             }
         }
 
-        info!(count = restored, "Files restored");
+        self.restore_symlinks(plan)?;
+        self.apply_directory_metadata(plan)?;
+
+        info!(
+            files = restored,
+            directories = plan.snapshot.directories.len(),
+            symlinks = plan.snapshot.symlinks.len(),
+            "Restore completed"
+        );
         Ok(restored)
+    }
+
+    /// Create directories from the snapshot before restoring files.
+    fn create_directories(&self, plan: &RestorePlan) -> Result<usize> {
+        let mut created = 0;
+
+        for dir in &plan.snapshot.directories {
+            let target_path = Self::safe_restore_path(&plan.target, &dir.path)?;
+            fs::create_dir_all(&target_path)?;
+            created += 1;
+        }
+
+        Ok(created)
+    }
+
+    /// Apply directory permissions and modified times after file restore.
+    fn apply_directory_metadata(&self, plan: &RestorePlan) -> Result<()> {
+        for dir in plan.snapshot.directories.iter().rev() {
+            let target_path = Self::safe_restore_path(&plan.target, &dir.path)?;
+
+            #[cfg(target_os = "linux")]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&target_path, fs::Permissions::from_mode(dir.permissions))?;
+            }
+
+            let mtime = filetime::FileTime::from_unix_time(
+                dir.mtime.timestamp(),
+                dir.mtime.timestamp_subsec_nanos(),
+            );
+            filetime::set_file_mtime(&target_path, mtime)?;
+        }
+
+        Ok(())
+    }
+
+    /// Restore symlinks from the snapshot.
+    fn restore_symlinks(&self, plan: &RestorePlan) -> Result<usize> {
+        let mut restored = 0;
+
+        for link in &plan.snapshot.symlinks {
+            Self::validate_symlink_target(&link.target)?;
+
+            let target_path = Self::safe_restore_path(&plan.target, &link.path)?;
+
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            if fs::symlink_metadata(&target_path).is_ok() {
+                if target_path.is_dir() {
+                    fs::remove_dir_all(&target_path)?;
+                } else {
+                    fs::remove_file(&target_path)?;
+                }
+            }
+
+            #[cfg(unix)]
+            {
+                std::os::unix::fs::symlink(&link.target, &target_path)?;
+                restored += 1;
+            }
+
+            #[cfg(not(unix))]
+            {
+                return Err(IronVaultError::Restore(
+                    "Symlink restore is only supported on Unix-like systems".to_string(),
+                ));
+            }
+        }
+
+        Ok(restored)
+    }
+
+    /// Keep restored symlinks conservative and local to the restored tree.
+    fn validate_symlink_target(link_target: &str) -> Result<()> {
+        let target = Path::new(link_target);
+
+        if target.is_absolute() {
+            return Err(IronVaultError::Restore(format!(
+                "Refusing to restore symlink with absolute target: {}",
+                link_target
+            )));
+        }
+
+        let mut has_normal_component = false;
+
+        for component in target.components() {
+            match component {
+                Component::Normal(_) => has_normal_component = true,
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    return Err(IronVaultError::Restore(format!(
+                        "Refusing to restore symlink with parent traversal target: {}",
+                        link_target
+                    )));
+                }
+                Component::RootDir | Component::Prefix(_) => {
+                    return Err(IronVaultError::Restore(format!(
+                        "Refusing to restore unsafe symlink target: {}",
+                        link_target
+                    )));
+                }
+            }
+        }
+
+        if !has_normal_component {
+            return Err(IronVaultError::Restore(
+                "Refusing to restore empty symlink target".to_string(),
+            ));
+        }
+
+        Ok(())
     }
 
     /// Restore a single file
@@ -309,5 +432,32 @@ mod tests {
             "unexpected error: {}",
             err
         );
+    }
+    #[test]
+    fn symlink_target_rejects_absolute_path() {
+        let err = RestoreManager::validate_symlink_target("/etc/passwd").unwrap_err();
+
+        assert!(
+            err.to_string().contains("absolute target"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn symlink_target_rejects_parent_traversal() {
+        let err = RestoreManager::validate_symlink_target("../outside.txt").unwrap_err();
+
+        assert!(
+            err.to_string().contains("parent traversal"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn symlink_target_accepts_normal_relative_path() {
+        RestoreManager::validate_symlink_target("file.txt").unwrap();
+        RestoreManager::validate_symlink_target("subdir/file.txt").unwrap();
     }
 }

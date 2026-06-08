@@ -2,3 +2,4 @@
 /.ironvault-test/
 *.log
 .DS_Store
+/crates/ironvault-cli/.ironvault-cli-test-runs/

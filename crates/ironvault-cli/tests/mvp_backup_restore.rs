@@ -1,4 +1,6 @@
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -52,6 +54,12 @@ fn mvp_backup_snapshot_and_restore_round_trip() {
     fs::write(source.join("test.txt"), "hello ironvault\n").unwrap();
     fs::write(subdir.join("second.txt"), "second file\n").unwrap();
     fs::write(subdir.join("duplicate.txt"), "hello ironvault\n").unwrap();
+
+    let source_test_file = source.join("test.txt");
+    fs::set_permissions(&source_test_file, fs::Permissions::from_mode(0o640)).unwrap();
+
+    let known_mtime = filetime::FileTime::from_unix_time(1_700_000_000, 0);
+    filetime::set_file_mtime(&source_test_file, known_mtime).unwrap();
 
     let config = format!(
         r#"[repo]
@@ -178,6 +186,15 @@ log_level = "info"
         fs::read_to_string(restore.join("source/subdir/duplicate.txt")).unwrap(),
         "hello ironvault\n"
     );
+
+    let restored_test_file = restore.join("source/test.txt");
+    let restored_metadata = fs::metadata(&restored_test_file).unwrap();
+
+    #[cfg(unix)]
+    assert_eq!(restored_metadata.permissions().mode() & 0o777, 0o640);
+
+    let restored_mtime = filetime::FileTime::from_last_modification_time(&restored_metadata);
+    assert_eq!(restored_mtime.unix_seconds(), 1_700_000_000);
 
     let object_count = count_files(&repo.join("objects"));
     assert_eq!(

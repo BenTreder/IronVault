@@ -242,6 +242,17 @@ impl Repository {
                 });
 
             let mut entry = crate::FileEntry::new(relative_path, size);
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+
+                entry.permissions = metadata.mode() & 0o7777;
+                entry.uid = metadata.uid();
+                entry.gid = metadata.gid();
+            }
+
+            entry.mtime = chrono::DateTime::<chrono::Utc>::from(metadata.modified()?);
             entry.chunk_hashes = chunk_hashes;
             entry.compression = config.backup.compression.clone();
 

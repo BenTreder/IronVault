@@ -4,7 +4,7 @@ use crate::{IronVaultError, Result, Snapshot};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use tracing::{info, span, warn, Level};
+use tracing::{info, span, Level};
 
 /// Restore plan
 #[derive(Debug, Clone)]

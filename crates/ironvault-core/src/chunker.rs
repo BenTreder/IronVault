@@ -2,7 +2,7 @@
 
 use crate::Result;
 use std::fs::File;
-use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read};
 use std::path::Path;
 use tracing::{debug, span, Level};
 

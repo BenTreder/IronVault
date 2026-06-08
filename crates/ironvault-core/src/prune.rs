@@ -1,6 +1,6 @@
 //! Pruning functionality for IronVault
 
-use crate::{IronVaultError, Result};
+use crate::Result;
 use chrono::{DateTime, Duration, Utc};
 use std::collections::HashSet;
 use tracing::{info, span, Level};

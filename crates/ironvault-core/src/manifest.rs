@@ -1,6 +1,6 @@
 //! Repository manifest for IronVault
 
-use crate::{Result, Snapshot};
+use crate::Snapshot;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;

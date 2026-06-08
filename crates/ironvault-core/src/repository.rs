@@ -2,11 +2,11 @@
 
 use crate::{Config, RepositoryInfo, Result, SafetyConfig, Snapshot};
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use rusqlite::Connection;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, span, Level};
+use tracing::{info, span, Level};
 
 /// Repository configuration
 #[derive(Debug, Clone)]
@@ -111,7 +111,7 @@ impl Repository {
     }
 
     /// Initialize a new repository
-    pub fn init(path: &Path, safety: &SafetyConfig) -> Result<()> {
+    pub fn init(path: &Path, _safety: &SafetyConfig) -> Result<()> {
         let _span = span!(
             Level::INFO,
             "init_repository",
@@ -329,7 +329,7 @@ impl Repository {
     }
 
     /// Check if a snapshot should be pruned
-    fn should_prune(&self, snapshot: &Snapshot, policy: &crate::config::RetentionConfig) -> bool {
+    fn should_prune(&self, _snapshot: &Snapshot, _policy: &crate::config::RetentionConfig) -> bool {
         // TODO: Implement proper retention logic
         // For now, just keep recent snapshots
         false

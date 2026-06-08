@@ -1,9 +1,9 @@
 //! Safety checks for IronVault
 
-use crate::{Config, IronVaultError, Result, SafetyConfig};
+use crate::{IronVaultError, Result, SafetyConfig};
 use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
-use tracing::{info, warn};
+use tracing::info;
 
 /// Safety checker
 pub struct SafetyChecker {

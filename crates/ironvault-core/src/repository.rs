@@ -25,7 +25,7 @@ impl Default for RepositoryConfig {
 /// IronVault repository
 pub struct Repository {
     config: RepositoryConfig,
-    safety: SafetyConfig,
+    _safety: SafetyConfig,
     db: Connection,
 }
 
@@ -76,7 +76,7 @@ impl Repository {
         info!("Repository opened at {}", config.path.display());
         Ok(Self {
             config: config.clone(),
-            safety: safety.clone(),
+            _safety: safety.clone(),
             db,
         })
     }

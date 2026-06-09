@@ -226,6 +226,37 @@ The GUI can use these CLI commands now:
 - ironvault restore-plan --repo ./repo --snapshot latest --target ./restore --json
 - ironvault restore --repo ./repo --snapshot latest --target ./restore --if-exists skip
 
+## Creator attribution
+
+The frontend should include tasteful creator attribution.
+
+Recommended footer copy:
+
+Made by Ben Treder
+
+Website link:
+
+https://bentreder.com
+
+Display text:
+
+BenTreder.com
+
+Placement ideas:
+
+- Footer area
+- About screen
+- Settings screen
+- Small bottom-left or bottom-right app shell credit
+
+The attribution should feel premium and subtle, not distracting.
+
+Suggested UI wording:
+
+Made by Ben Treder
+
+
+
 ## Frontend build rule
 
 Before changing the actual frontend UI, inspect the current Vue and Tauri files.

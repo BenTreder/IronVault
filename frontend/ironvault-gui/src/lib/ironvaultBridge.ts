@@ -13,6 +13,11 @@ export interface VerifyResult {
   message: string
 }
 
+export interface BackupResult {
+  success: boolean
+  message: string
+}
+
 export interface SnapshotInfo {
   name: string
   created_at?: string
@@ -54,6 +59,10 @@ export async function getRepoInfo(repoPath: string): Promise<RepoInfo> {
 
 export async function verifyRepository(repoPath: string): Promise<VerifyResult> {
   return await invoke<VerifyResult>('verify_repository', { repoPath })
+}
+
+export async function createBackup(configPath: string): Promise<BackupResult> {
+  return await invoke<BackupResult>('create_backup', { configPath })
 }
 
 export async function listSnapshots(repoPath: string): Promise<SnapshotInfo[]> {

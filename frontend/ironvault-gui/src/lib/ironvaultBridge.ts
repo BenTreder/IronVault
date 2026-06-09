@@ -26,6 +26,14 @@ export interface SetupTestVaultResult {
   message: string
 }
 
+export interface SetupCustomVaultResult {
+  repo_path: string
+  config_path: string
+  source_path: string
+  initialized_repo: boolean
+  message: string
+}
+
 export interface SnapshotInfo {
   name: string
   created_at?: string
@@ -75,6 +83,18 @@ export async function createBackup(configPath: string): Promise<BackupResult> {
 
 export async function setupTestVault(): Promise<SetupTestVaultResult> {
   return await invoke<SetupTestVaultResult>('setup_test_vault')
+}
+
+export async function setupCustomVault(
+  sourcePath: string,
+  repoPath: string,
+  configPath: string
+): Promise<SetupCustomVaultResult> {
+  return await invoke<SetupCustomVaultResult>('setup_custom_vault', {
+    sourcePath,
+    repoPath,
+    configPath
+  })
 }
 
 export async function listSnapshots(repoPath: string): Promise<SnapshotInfo[]> {

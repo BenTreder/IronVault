@@ -87,6 +87,15 @@ struct SetupTestVaultResult {
     message: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct SetupCustomVaultResult {
+    repo_path: String,
+    config_path: String,
+    source_path: String,
+    initialized_repo: bool,
+    message: String,
+}
+
 #[tauri::command]
 fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -252,6 +261,136 @@ log_level = "info"
 }
 
 #[tauri::command]
+async fn setup_custom_vault(
+    source_path: String,
+    repo_path: String,
+    config_path: String,
+) -> Result<SetupCustomVaultResult, String> {
+    let source = std::path::PathBuf::from(source_path.trim());
+    let repo = std::path::PathBuf::from(repo_path.trim());
+    let config = std::path::PathBuf::from(config_path.trim());
+
+    if source.as_os_str().is_empty() {
+        return Err("Choose a source folder before creating a real vault config.".to_string());
+    }
+
+    if repo.as_os_str().is_empty() {
+        return Err("Choose a vault repo path before creating a real vault config.".to_string());
+    }
+
+    if config.as_os_str().is_empty() {
+        return Err("Choose a config file path before creating a real vault config.".to_string());
+    }
+
+    if !source.exists() {
+        return Err(format!("Source folder does not exist: {}", source.display()));
+    }
+
+    if !source.is_dir() {
+        return Err(format!("Source path is not a folder: {}", source.display()));
+    }
+
+    if let Some(parent) = config.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!("Could not create config parent folder {}: {error}", parent.display())
+        })?;
+    }
+
+    if let Some(parent) = repo.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!("Could not create repo parent folder {}: {error}", parent.display())
+        })?;
+    }
+
+    let lock_file = config
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("ironvault.lock");
+
+    let log_dir = config
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("logs");
+
+    let config_body = format!(
+        r#"[repo]
+path = "{repo}"
+
+[backup]
+sources = ["{source}"]
+one_file_system = true
+follow_symlinks = false
+parallelism = "auto"
+chunk_size = "4MiB"
+compression = "zstd"
+compression_level = 3
+
+[retention]
+keep_hourly = 24
+keep_daily = 7
+keep_weekly = 4
+keep_monthly = 6
+keep_yearly = 2
+
+[safety]
+require_root = false
+require_repo_mount = false
+repo_mount_point = "{repo}"
+minimum_free_space_gb = 0
+prevent_if_pacman_running = false
+prevent_if_pacman_lock_exists = false
+prevent_if_backup_already_running = false
+lock_file = "{lock_file}"
+never_restore_to_root = true
+
+[excludes]
+paths = []
+
+[metadata]
+save_package_list = false
+save_enabled_services = false
+save_block_devices = false
+save_kernel_info = false
+
+[notifications]
+enabled = false
+desktop_notifications = false
+
+[logging]
+log_dir = "{log_dir}"
+log_level = "info"
+"#,
+        repo = repo.display(),
+        source = source.display(),
+        lock_file = lock_file.display(),
+        log_dir = log_dir.display(),
+    );
+
+    std::fs::write(&config, config_body).map_err(|error| {
+        format!("Could not write real vault config {}: {error}", config.display())
+    })?;
+
+    let initialized_repo = if repo.join("snapshots").exists() {
+        false
+    } else {
+        run_ironvault(&["init", "--repo", &repo.display().to_string()])?;
+        true
+    };
+
+    Ok(SetupCustomVaultResult {
+        repo_path: repo.display().to_string(),
+        config_path: config.display().to_string(),
+        source_path: source.display().to_string(),
+        initialized_repo,
+        message: if initialized_repo {
+            "Real vault config created and repository initialized.".to_string()
+        } else {
+            "Real vault config refreshed. Existing repository kept.".to_string()
+        },
+    })
+}
+
+#[tauri::command]
 async fn restore_plan(
     repo_path: String,
     snapshot: String,
@@ -356,6 +495,7 @@ pub fn run() {
             list_snapshots,
             create_backup,
             setup_test_vault,
+            setup_custom_vault,
             restore_plan,
             restore_snapshot,
             get_info,

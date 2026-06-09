@@ -4,7 +4,7 @@
       <div class="hero-copy">
         <span class="iv-pill">
           <span class="iv-dot" aria-hidden="true"></span>
-          Vault health looks good
+          {{ heroBadge }}
         </span>
 
         <h2>Your vault is protected</h2>
@@ -37,7 +37,7 @@
       <article class="summary-card">
         <span>Vault Health</span>
         <strong :class="statusClass">{{ status }}</strong>
-        <small>Every vault piece should be accounted for.</small>
+        <small>{{ statusNote }}</small>
       </article>
 
       <article class="summary-card">
@@ -55,7 +55,7 @@
       <article class="summary-card">
         <span>Vault Size</span>
         <strong>{{ repoSize }}</strong>
-        <small>Stored backup data in the vault.</small>
+        <small>{{ chunkNote }}</small>
       </article>
     </section>
 
@@ -66,10 +66,15 @@
             <p class="eyebrow-small">Repository</p>
             <h3>Vault location</h3>
           </div>
+
+          <button class="mini-button" type="button" @click="loadDashboard" :disabled="isLoading">
+            {{ isLoading ? 'Refreshing...' : 'Refresh' }}
+          </button>
         </div>
+
         <p class="repo-path">{{ repoPath }}</p>
         <p class="panel-note">
-          This will connect to the CLI JSON bridge next, so the dashboard can read live vault status.
+          {{ bridgeNote }}
         </p>
       </article>
 
@@ -85,16 +90,61 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
+import {
+  defaultRepoPath,
+  formatBytes,
+  getRepoInfo,
+  verifyRepository
+} from '../lib/ironvaultBridge'
 
-const lastBackupTime = ref('Not connected yet')
+const heroBadge = ref('Vault health looks good')
+const lastBackupTime = ref('Waiting for live data')
 const repoSize = ref('0 B')
 const snapshotCount = ref(0)
-const status = ref('Protected')
-const statusClass = ref('status-ready')
-const repoPath = ref('/mnt/backups/ironvault')
+const totalChunks = ref<number | null>(null)
+const status = ref('Bridge ready')
+const statusClass = ref('status-warning')
+const statusNote = ref('Dashboard is ready to read live IronVault JSON.')
+const chunkNote = ref('Stored backup data in the vault.')
+const repoPath = ref(defaultRepoPath)
+const bridgeNote = ref('Waiting for the Tauri command bridge to return live vault data.')
 const isBackingUp = ref(false)
 const isVerifying = ref(false)
+const isLoading = ref(false)
+
+async function loadDashboard() {
+  isLoading.value = true
+
+  try {
+    const info = await getRepoInfo(repoPath.value)
+
+    repoPath.value = info.path
+    repoSize.value = formatBytes(info.total_size)
+    snapshotCount.value = info.snapshot_count
+    totalChunks.value = info.total_chunks ?? null
+
+    status.value = 'Connected'
+    statusClass.value = 'status-ready'
+    statusNote.value = 'Live vault data loaded from the command bridge.'
+    heroBadge.value = 'Vault data connected'
+    lastBackupTime.value = 'Ready'
+    bridgeNote.value = 'Live repository info is flowing through the dashboard bridge.'
+
+    chunkNote.value = totalChunks.value === null
+      ? 'Stored backup data in the vault.'
+      : `${totalChunks.value} vault chunk${totalChunks.value === 1 ? '' : 's'} tracked.`
+  } catch (error) {
+    status.value = 'Bridge waiting'
+    statusClass.value = 'status-warning'
+    statusNote.value = 'The visual dashboard is ready, but live Tauri data is not connected yet.'
+    heroBadge.value = 'Visual dashboard ready'
+    lastBackupTime.value = 'Not connected yet'
+    bridgeNote.value = 'The frontend bridge is installed. Next we will finish the Tauri backend command package so real vault data can load here.'
+  } finally {
+    isLoading.value = false
+  }
+}
 
 async function runBackup() {
   isBackingUp.value = true
@@ -102,10 +152,13 @@ async function runBackup() {
 
   try {
     status.value = 'Backup sealed'
+    statusClass.value = 'status-ready'
     snapshotCount.value++
-  } catch (e) {
+    statusNote.value = 'Backup command placeholder completed. Live backup wiring comes next.'
+  } catch (error) {
     status.value = 'Backup needs attention'
     statusClass.value = 'status-error'
+    statusNote.value = 'IronVault could not complete the backup action.'
   } finally {
     isBackingUp.value = false
   }
@@ -116,15 +169,25 @@ async function verifyRepo() {
   status.value = 'Checking vault...'
 
   try {
-    status.value = 'Protected'
-    statusClass.value = 'status-ready'
-  } catch (e) {
-    status.value = 'Needs attention'
-    statusClass.value = 'status-error'
+    const result = await verifyRepository(repoPath.value)
+
+    status.value = result.valid ? 'Protected' : 'Needs attention'
+    statusClass.value = result.valid ? 'status-ready' : 'status-error'
+    statusNote.value = result.message
+    heroBadge.value = result.valid ? 'Vault health looks good' : 'Vault needs attention'
+  } catch (error) {
+    status.value = 'Bridge waiting'
+    statusClass.value = 'status-warning'
+    statusNote.value = 'Verify command is ready in the dashboard, but the Tauri backend still needs the live command implementation.'
+    heroBadge.value = 'Verify bridge ready'
   } finally {
     isVerifying.value = false
   }
 }
+
+onMounted(() => {
+  loadDashboard()
+})
 </script>
 
 <style scoped>
@@ -273,6 +336,10 @@ async function verifyRepo() {
   color: var(--iv-success);
 }
 
+.status-warning {
+  color: var(--iv-warning);
+}
+
 .status-error {
   color: var(--iv-danger);
 }
@@ -287,9 +354,32 @@ async function verifyRepo() {
   padding: 1.25rem;
 }
 
+.panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .panel h3 {
   margin: 0.2rem 0 0;
   font-size: 1.35rem;
+}
+
+.mini-button {
+  min-height: 36px;
+  padding: 0.55rem 0.85rem;
+  border-radius: 999px;
+  background: var(--iv-surface-raised);
+  color: var(--iv-text);
+  border: 1px solid var(--iv-border);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.mini-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .repo-path {

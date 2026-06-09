@@ -5,91 +5,161 @@
         <p class="eyebrow-small">Settings</p>
         <h2>Vault control room</h2>
         <p>
-          Choose the vault IronVault should monitor. The dashboard will use this saved path when it loads live vault status.
+          Choose which vault the desktop app reads from. This path powers Dashboard, Snapshots, Restore, and the safety checks.
         </p>
       </div>
+
+      <span :class="['status-badge', statusClass]">{{ status }}</span>
     </section>
 
     <section class="settings-grid">
-      <article class="settings-card">
-        <div class="settings-card-heading">
+      <article class="panel main-panel">
+        <div class="panel-heading">
           <div>
-            <p class="eyebrow-small">Repository</p>
-            <h3>Current vault path</h3>
+            <p class="eyebrow-small">Vault path</p>
+            <h3>Saved repository</h3>
           </div>
-          <span class="settings-badge">{{ pathChanged ? 'Unsaved' : 'Saved' }}</span>
         </div>
 
-        <label class="setting-label" for="repoPath">Vault repo path</label>
-        <div class="repo-form-row">
-          <input
-            id="repoPath"
-            v-model="repoPathDraft"
-            class="repo-input"
-            type="text"
-            placeholder="/tmp/ironvault-gui-live-test/repo"
-          />
+        <label class="setting-label" for="repoPath">Repository path</label>
+        <input
+          id="repoPath"
+          v-model="repoPath"
+          class="settings-input"
+          type="text"
+          placeholder="/mnt/backups/ironvault"
+        />
+
+        <div class="button-row">
           <button class="iv-button iv-button-primary" type="button" @click="savePath">
             Save path
           </button>
-        </div>
-
-        <p class="settings-note">
-          {{ saveMessage }}
-        </p>
-
-        <div class="settings-actions">
           <button class="iv-button iv-button-secondary" type="button" @click="useTestVault">
             Use test vault
           </button>
-          <button class="iv-button iv-button-ghost" type="button" @click="restoreDefaultPath">
+          <button class="iv-button iv-button-secondary" type="button" @click="resetPath">
             Reset default
           </button>
         </div>
-      </article>
 
-      <article class="settings-card">
-        <p class="eyebrow-small">Safety</p>
-        <h3>Restore rules stay protective</h3>
-        <p>
-          Settings will never make restore overwrite files silently. IronVault still previews restore plans first and refuses overwrite by default.
+        <p class="panel-note">
+          {{ message }}
         </p>
       </article>
+
+      <article class="panel helper-panel">
+        <p class="eyebrow-small">Demo helper</p>
+        <h3>Set up a safe test vault</h3>
+        <p>
+          Creates a small source folder outside /tmp, writes a matching config, initializes the test repo if needed, then saves the paths for the GUI.
+        </p>
+
+        <button class="iv-button iv-button-primary" type="button" @click="setupDemoVault" :disabled="isSettingUp">
+          {{ isSettingUp ? 'Setting up...' : 'Set up test vault' }}
+        </button>
+
+        <div v-if="setupResult" class="result-card">
+          <p class="eyebrow-small">Created paths</p>
+          <dl>
+            <div>
+              <dt>Vault</dt>
+              <dd>{{ setupResult.repo_path }}</dd>
+            </div>
+            <div>
+              <dt>Config</dt>
+              <dd>{{ setupResult.config_path }}</dd>
+            </div>
+            <div>
+              <dt>Source</dt>
+              <dd>{{ setupResult.source_path }}</dd>
+            </div>
+          </dl>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel note-panel">
+      <p class="eyebrow-small">Reminder</p>
+      <h3>Settings path is the app’s source of truth</h3>
+      <p>
+        Backup uses its own config file path, but Dashboard, Snapshots, and Restore read from the repository path saved here.
+      </p>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { defaultRepoPath } from '../lib/ironvaultBridge'
-import { loadRepoPath, resetRepoPath, saveRepoPath } from '../lib/ironvaultSettings'
+import { ref } from 'vue'
+import {
+  defaultRepoPath,
+  setupTestVault,
+  type SetupTestVaultResult
+} from '../lib/ironvaultBridge'
+import {
+  loadRepoPath,
+  resetRepoPath,
+  saveRepoPath
+} from '../lib/ironvaultSettings'
 
-const testVaultPath = '/tmp/ironvault-gui-live-test/repo'
-const savedPath = ref(loadRepoPath())
-const repoPathDraft = ref(savedPath.value)
-const saveMessage = ref('Vault path is saved locally for this desktop app.')
+const backupConfigStorageKey = 'ironvault-backup-config-path'
+const testRepoPath = '/tmp/ironvault-gui-live-test/repo'
 
-const pathChanged = computed(() => repoPathDraft.value.trim() !== savedPath.value)
+const repoPath = ref(loadRepoPath())
+const message = ref('Vault path loaded from local settings.')
+const status = ref('Ready')
+const statusClass = ref('status-ready')
+const isSettingUp = ref(false)
+const setupResult = ref<SetupTestVaultResult | null>(null)
+
+function markSaved(savedPath: string, savedMessage: string) {
+  repoPath.value = savedPath
+  message.value = savedMessage
+  status.value = 'Saved'
+  statusClass.value = 'status-ready'
+}
 
 function savePath() {
-  const nextPath = saveRepoPath(repoPathDraft.value)
-
-  savedPath.value = nextPath
-  repoPathDraft.value = nextPath
-  saveMessage.value = 'Vault path saved. The dashboard will use this path the next time it refreshes.'
+  const savedPath = saveRepoPath(repoPath.value)
+  markSaved(savedPath, `Saved vault path: ${savedPath}`)
 }
 
 function useTestVault() {
-  repoPathDraft.value = testVaultPath
-  savePath()
+  const savedPath = saveRepoPath(testRepoPath)
+  markSaved(savedPath, `Using test vault: ${savedPath}`)
 }
 
-function restoreDefaultPath() {
-  const nextPath = resetRepoPath()
+function resetPath() {
+  const savedPath = resetRepoPath()
+  markSaved(savedPath || defaultRepoPath, `Reset to default vault path: ${savedPath || defaultRepoPath}`)
+}
 
-  savedPath.value = nextPath
-  repoPathDraft.value = nextPath
-  saveMessage.value = `Vault path reset to the default: ${defaultRepoPath}`
+async function setupDemoVault() {
+  isSettingUp.value = true
+  setupResult.value = null
+  status.value = 'Setting up'
+  statusClass.value = 'status-waiting'
+  message.value = 'Creating GUI test vault helper files...'
+
+  try {
+    const result = await setupTestVault()
+    setupResult.value = result
+
+    saveRepoPath(result.repo_path)
+    localStorage.setItem(backupConfigStorageKey, result.config_path)
+
+    repoPath.value = result.repo_path
+    status.value = 'Test vault ready'
+    statusClass.value = 'status-ready'
+    message.value = `${result.message} Backup config saved for the Backup page.`
+  } catch (error) {
+    status.value = 'Needs attention'
+    statusClass.value = 'status-error'
+    message.value = error instanceof Error
+      ? error.message
+      : 'Could not set up the GUI test vault.'
+  } finally {
+    isSettingUp.value = false
+  }
 }
 </script>
 
@@ -100,17 +170,23 @@ function restoreDefaultPath() {
 }
 
 .settings-hero,
-.settings-card {
+.panel,
+.result-card {
   border: 1px solid var(--iv-border);
-  border-radius: var(--iv-radius-lg);
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--iv-surface) 94%, transparent), var(--iv-surface-raised)),
-    radial-gradient(circle at 10% 10%, rgba(249, 115, 22, 0.14), transparent 22rem);
+  background: color-mix(in srgb, var(--iv-surface) 94%, transparent);
   box-shadow: var(--iv-shadow-soft);
 }
 
 .settings-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   padding: clamp(1.35rem, 4vw, 2rem);
+  border-radius: var(--iv-radius-lg);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--iv-surface) 94%, transparent), var(--iv-surface-raised)),
+    radial-gradient(circle at 12% 18%, rgba(249, 115, 22, 0.14), transparent 24rem);
 }
 
 .settings-hero h2 {
@@ -121,30 +197,34 @@ function restoreDefaultPath() {
 }
 
 .settings-hero p,
-.settings-card p {
+.panel-note,
+.helper-panel p,
+.note-panel p {
   color: var(--iv-muted);
   line-height: 1.6;
 }
 
 .settings-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
   gap: 1rem;
 }
 
-.settings-card {
+.panel,
+.result-card {
   padding: 1.25rem;
+  border-radius: var(--iv-radius-md);
 }
 
-.settings-card-heading {
+.panel-heading {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  align-items: flex-start;
 }
 
-.settings-card h3 {
+.panel h3,
+.result-card h3 {
   margin: 0.2rem 0 0;
   font-size: 1.35rem;
 }
@@ -158,19 +238,9 @@ function restoreDefaultPath() {
   text-transform: uppercase;
 }
 
-.settings-badge {
-  padding: 0.42rem 0.72rem;
-  border: 1px solid var(--iv-border);
-  border-radius: 999px;
-  background: var(--iv-accent-soft);
-  color: var(--iv-text);
-  font-size: 0.78rem;
-  font-weight: 900;
-}
-
 .setting-label {
   display: block;
-  margin-bottom: 0.55rem;
+  margin: 1rem 0 0.55rem;
   color: var(--iv-muted);
   font-size: 0.78rem;
   font-weight: 900;
@@ -178,13 +248,7 @@ function restoreDefaultPath() {
   text-transform: uppercase;
 }
 
-.repo-form-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.65rem;
-}
-
-.repo-input {
+.settings-input {
   min-height: 44px;
   width: 100%;
   padding: 0.7rem 0.9rem;
@@ -195,25 +259,74 @@ function restoreDefaultPath() {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-.settings-note {
-  margin-top: 0.9rem;
-}
-
-.settings-actions {
+.button-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   margin-top: 1rem;
 }
 
-@media (max-width: 940px) {
-  .settings-grid {
-    grid-template-columns: 1fr;
-  }
+.status-badge {
+  padding: 0.42rem 0.72rem;
+  border: 1px solid var(--iv-border);
+  border-radius: 999px;
+  background: var(--iv-accent-soft);
+  color: var(--iv-text);
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
-@media (max-width: 640px) {
-  .repo-form-row {
+.status-ready {
+  color: var(--iv-success);
+}
+
+.status-waiting {
+  color: var(--iv-warning);
+}
+
+.status-error {
+  color: var(--iv-danger);
+}
+
+.result-card {
+  margin-top: 1rem;
+  background: var(--iv-bg-soft);
+}
+
+.result-card dl {
+  display: grid;
+  gap: 0.7rem;
+  margin: 1rem 0 0;
+}
+
+.result-card div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.result-card dt {
+  color: var(--iv-muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.result-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--iv-muted-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@media (max-width: 940px) {
+  .settings-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 }

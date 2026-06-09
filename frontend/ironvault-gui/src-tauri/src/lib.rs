@@ -78,6 +78,15 @@ struct RestoreResult {
     message: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct SetupTestVaultResult {
+    repo_path: String,
+    config_path: String,
+    source_path: String,
+    initialized_repo: bool,
+    message: String,
+}
+
 #[tauri::command]
 fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -122,6 +131,123 @@ async fn create_backup(config_path: String) -> Result<BackupResult, String> {
     Ok(BackupResult {
         success: true,
         message: output,
+    })
+}
+
+#[tauri::command]
+async fn setup_test_vault() -> Result<SetupTestVaultResult, String> {
+    let home = std::env::var("HOME").map_err(|error| {
+        format!("Could not find your home folder for the GUI test source: {error}")
+    })?;
+
+    let test_root = std::path::PathBuf::from("/tmp/ironvault-gui-live-test");
+    let repo_path = test_root.join("repo");
+    let config_path = test_root.join("ironvault.toml");
+    let source_path = std::path::PathBuf::from(home)
+        .join(".local")
+        .join("share")
+        .join("ironvault")
+        .join("gui-live-source");
+
+    std::fs::create_dir_all(source_path.join("docs")).map_err(|error| {
+        format!("Could not create GUI test docs folder: {error}")
+    })?;
+
+    std::fs::create_dir_all(source_path.join("photos")).map_err(|error| {
+        format!("Could not create GUI test photos folder: {error}")
+    })?;
+
+    std::fs::create_dir_all(&test_root).map_err(|error| {
+        format!("Could not create GUI test vault folder: {error}")
+    })?;
+
+    std::fs::write(
+        source_path.join("docs").join("readme.txt"),
+        "IronVault GUI live test file.\nVault door closed. Everything looks safe.\n",
+    )
+    .map_err(|error| format!("Could not write GUI test readme file: {error}"))?;
+
+    std::fs::write(
+        source_path.join("photos").join("list.txt"),
+        "This is a small placeholder file for the GUI test vault.\n",
+    )
+    .map_err(|error| format!("Could not write GUI test photo list file: {error}"))?;
+
+    let config = format!(
+        r#"[repo]
+path = "{repo}"
+
+[backup]
+sources = ["{source}"]
+one_file_system = true
+follow_symlinks = false
+parallelism = "auto"
+chunk_size = "8B"
+compression = "zstd"
+compression_level = 3
+
+[retention]
+keep_hourly = 24
+keep_daily = 7
+keep_weekly = 4
+keep_monthly = 6
+keep_yearly = 2
+
+[safety]
+require_root = false
+require_repo_mount = false
+repo_mount_point = "{repo}"
+minimum_free_space_gb = 0
+prevent_if_pacman_running = false
+prevent_if_pacman_lock_exists = false
+prevent_if_backup_already_running = false
+lock_file = "{lock_file}"
+never_restore_to_root = true
+
+[excludes]
+paths = []
+
+[metadata]
+save_package_list = false
+save_enabled_services = false
+save_block_devices = false
+save_kernel_info = false
+
+[notifications]
+enabled = false
+desktop_notifications = false
+
+[logging]
+log_dir = "{log_dir}"
+log_level = "info"
+"#,
+        repo = repo_path.display(),
+        source = source_path.display(),
+        lock_file = test_root.join("ironvault.lock").display(),
+        log_dir = test_root.join("logs").display(),
+    );
+
+    std::fs::write(&config_path, config).map_err(|error| {
+        format!("Could not write GUI test vault config: {error}")
+    })?;
+
+    let initialized_repo = if repo_path.join("snapshots").exists() {
+        false
+    } else {
+        run_ironvault(&["init", "--repo", &repo_path.display().to_string()])?;
+        true
+    };
+
+    Ok(SetupTestVaultResult {
+        repo_path: repo_path.display().to_string(),
+        config_path: config_path.display().to_string(),
+        source_path: source_path.display().to_string(),
+        initialized_repo,
+        message: if initialized_repo {
+            "GUI test vault created and initialized.".to_string()
+        } else {
+            "GUI test vault config refreshed. Existing repo kept.".to_string()
+        },
     })
 }
 
@@ -229,6 +355,7 @@ pub fn run() {
             init_repository,
             list_snapshots,
             create_backup,
+            setup_test_vault,
             restore_plan,
             restore_snapshot,
             get_info,

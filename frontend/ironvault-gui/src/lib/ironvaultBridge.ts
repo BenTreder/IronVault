@@ -13,6 +13,16 @@ export interface VerifyResult {
   message: string
 }
 
+export interface SnapshotInfo {
+  name: string
+  created_at?: string
+  file_count?: number
+  files?: number
+  directories?: number
+  symlinks?: number
+  total_size?: number
+}
+
 export const defaultRepoPath = '/mnt/backups/ironvault'
 
 export async function getRepoInfo(repoPath: string): Promise<RepoInfo> {
@@ -21,6 +31,14 @@ export async function getRepoInfo(repoPath: string): Promise<RepoInfo> {
 
 export async function verifyRepository(repoPath: string): Promise<VerifyResult> {
   return await invoke<VerifyResult>('verify_repository', { repoPath })
+}
+
+export async function listSnapshots(repoPath: string): Promise<SnapshotInfo[]> {
+  return await invoke<SnapshotInfo[]>('list_snapshots', { repoPath })
+}
+
+export function snapshotFileCount(snapshot: SnapshotInfo): number {
+  return snapshot.file_count ?? snapshot.files ?? 0
 }
 
 export function formatBytes(bytes: number): string {

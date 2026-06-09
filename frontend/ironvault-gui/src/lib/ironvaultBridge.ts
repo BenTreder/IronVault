@@ -41,6 +41,11 @@ export interface RestorePlanInfo {
   conflicts: RestoreConflict[]
 }
 
+export interface RestoreResult {
+  success: boolean
+  message: string
+}
+
 export const defaultRepoPath = '/mnt/backups/ironvault'
 
 export async function getRepoInfo(repoPath: string): Promise<RepoInfo> {
@@ -61,6 +66,18 @@ export async function getRestorePlan(
   targetPath: string
 ): Promise<RestorePlanInfo> {
   return await invoke<RestorePlanInfo>('restore_plan', {
+    repoPath,
+    snapshot,
+    targetPath
+  })
+}
+
+export async function restoreSnapshot(
+  repoPath: string,
+  snapshot: string,
+  targetPath: string
+): Promise<RestoreResult> {
+  return await invoke<RestoreResult>('restore_snapshot', {
     repoPath,
     snapshot,
     targetPath

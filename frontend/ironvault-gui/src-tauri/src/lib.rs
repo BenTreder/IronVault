@@ -72,6 +72,12 @@ struct RestorePlanInfo {
     conflicts: Vec<RestoreConflict>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct RestoreResult {
+    success: bool,
+    message: String,
+}
+
 #[tauri::command]
 fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -141,6 +147,30 @@ async fn restore_plan(
     })
 }
 
+#[tauri::command]
+async fn restore_snapshot(
+    repo_path: String,
+    snapshot: String,
+    target_path: String,
+) -> Result<RestoreResult, String> {
+    let output = run_ironvault(&[
+        "restore",
+        "--repo",
+        &repo_path,
+        "--snapshot",
+        &snapshot,
+        "--target",
+        &target_path,
+        "--if-exists",
+        "refuse",
+    ])?;
+
+    Ok(RestoreResult {
+        success: true,
+        message: output,
+    })
+}
+
 fn run_ironvault(args: &[&str]) -> Result<String, String> {
     let mut last_error = None;
 
@@ -200,6 +230,7 @@ pub fn run() {
             list_snapshots,
             create_backup,
             restore_plan,
+            restore_snapshot,
             get_info,
             verify_repository,
         ])

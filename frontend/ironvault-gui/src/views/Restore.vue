@@ -9,7 +9,7 @@
         </p>
       </div>
 
-      <button class="iv-button iv-button-primary" type="button" @click="previewRestore" :disabled="isLoading">
+      <button class="iv-button iv-button-primary" type="button" @click="previewRestore" :disabled="isLoading || isRestoring">
         {{ isLoading ? 'Building plan...' : 'Preview restore' }}
       </button>
     </section>
@@ -33,6 +33,7 @@
           class="restore-input"
           type="text"
           placeholder="latest"
+          @input="clearPlanAfterEdit"
         />
 
         <label class="setting-label" for="targetPath">Restore target</label>
@@ -42,6 +43,7 @@
           class="restore-input"
           type="text"
           placeholder="/tmp/ironvault-gui-restore-preview"
+          @input="clearPlanAfterEdit"
         />
 
         <p class="panel-note">
@@ -53,7 +55,7 @@
         <p class="eyebrow-small">Safety promise</p>
         <h3>No overwrite by surprise</h3>
         <p>
-          This screen only previews a restore plan. It does not restore files yet. Conflicts stay visible before any unlock step.
+          Restore execution stays locked until the preview is clean and you type RESTORE. The command uses refuse mode, so existing target files block the restore.
         </p>
       </article>
     </section>
@@ -98,7 +100,7 @@
       <div v-if="plan.conflicts.length === 0" class="empty-card">
         <h3>Vault door can open safely</h3>
         <p>
-          No restore conflicts were reported for this target. This is still only a preview.
+          No restore conflicts were reported for this target. Restore is still locked until you confirm below.
         </p>
       </div>
 
@@ -110,15 +112,54 @@
         </article>
       </div>
     </section>
+
+    <section v-if="plan" class="panel execution-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow-small">Guarded restore</p>
+          <h3>Unlock files only after confirmation</h3>
+        </div>
+        <span :class="['status-badge', canRestore ? 'status-ready' : 'status-error']">
+          {{ canRestore ? 'Unlocked' : 'Locked' }}
+        </span>
+      </div>
+
+      <p class="panel-note">
+        Type RESTORE to enable the restore button. IronVault will use --if-exists refuse, so it will not overwrite existing files.
+      </p>
+
+      <label class="setting-label" for="restoreConfirm">Confirmation</label>
+      <input
+        id="restoreConfirm"
+        v-model="restoreConfirmation"
+        class="restore-input"
+        type="text"
+        placeholder="Type RESTORE"
+      />
+
+      <div class="execution-actions">
+        <button class="iv-button iv-button-primary" type="button" @click="executeRestore" :disabled="!canRestore || isRestoring">
+          {{ isRestoring ? 'Restoring...' : 'Restore now' }}
+        </button>
+      </div>
+
+      <div v-if="restoreResult" class="result-card">
+        <p class="eyebrow-small">Result</p>
+        <h3>{{ restoreResult.success ? 'Restore complete' : 'Restore failed' }}</h3>
+        <pre>{{ restoreResult.message }}</pre>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import {
   formatBytes,
   getRestorePlan,
-  type RestorePlanInfo
+  restoreSnapshot,
+  type RestorePlanInfo,
+  type RestoreResult
 } from '../lib/ironvaultBridge'
 import { loadRepoPath } from '../lib/ironvaultSettings'
 
@@ -126,13 +167,34 @@ const repoPath = ref(loadRepoPath())
 const snapshotName = ref('latest')
 const targetPath = ref('/tmp/ironvault-gui-restore-preview')
 const plan = ref<RestorePlanInfo | null>(null)
+const restoreResult = ref<RestoreResult | null>(null)
+const restoreConfirmation = ref('')
 const isLoading = ref(false)
+const isRestoring = ref(false)
 const status = ref('Waiting')
 const statusClass = ref('status-waiting')
 const statusMessage = ref('Choose a snapshot and target path, then preview the restore plan.')
 
+const canRestore = computed(() =>
+  Boolean(plan.value?.safe_to_restore) &&
+  restoreConfirmation.value === 'RESTORE' &&
+  !isLoading.value &&
+  !isRestoring.value
+)
+
+function clearPlanAfterEdit() {
+  plan.value = null
+  restoreResult.value = null
+  restoreConfirmation.value = ''
+  status.value = 'Waiting'
+  statusClass.value = 'status-waiting'
+  statusMessage.value = 'Path changed. Preview restore again before unlocking files.'
+}
+
 async function previewRestore() {
   isLoading.value = true
+  restoreResult.value = null
+  restoreConfirmation.value = ''
   repoPath.value = loadRepoPath()
   status.value = 'Planning'
   statusClass.value = 'status-waiting'
@@ -161,6 +223,42 @@ async function previewRestore() {
     isLoading.value = false
   }
 }
+
+async function executeRestore() {
+  if (!plan.value || !canRestore.value) {
+    return
+  }
+
+  isRestoring.value = true
+  status.value = 'Restoring'
+  statusClass.value = 'status-waiting'
+  statusMessage.value = 'IronVault is restoring with overwrite refusal enabled...'
+
+  try {
+    restoreResult.value = await restoreSnapshot(
+      repoPath.value,
+      plan.value.snapshot,
+      plan.value.target
+    )
+
+    status.value = 'Restored'
+    statusClass.value = 'status-ready'
+    statusMessage.value = 'Restore finished. Vault door closed behind us.'
+  } catch (error) {
+    restoreResult.value = {
+      success: false,
+      message: error instanceof Error
+        ? error.message
+        : 'IronVault could not complete the guarded restore.'
+    }
+
+    status.value = 'Restore blocked'
+    statusClass.value = 'status-error'
+    statusMessage.value = 'Restore did not complete. No overwrite mode remains enforced.'
+  } finally {
+    isRestoring.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -173,7 +271,8 @@ async function previewRestore() {
 .panel,
 .summary-card,
 .empty-card,
-.conflict-card {
+.conflict-card,
+.result-card {
   border: 1px solid var(--iv-border);
   background: color-mix(in srgb, var(--iv-surface) 94%, transparent);
   box-shadow: var(--iv-shadow-soft);
@@ -215,7 +314,8 @@ async function previewRestore() {
 .panel,
 .summary-card,
 .empty-card,
-.conflict-card {
+.conflict-card,
+.result-card {
   border-radius: var(--iv-radius-md);
 }
 
@@ -231,7 +331,8 @@ async function previewRestore() {
 }
 
 .panel h3,
-.empty-card h3 {
+.empty-card h3,
+.result-card h3 {
   margin: 0.2rem 0 0;
   font-size: 1.35rem;
 }
@@ -337,7 +438,8 @@ async function previewRestore() {
   color: var(--iv-danger);
 }
 
-.empty-card {
+.empty-card,
+.result-card {
   margin-top: 1rem;
   padding: 1rem;
 }
@@ -369,6 +471,25 @@ async function previewRestore() {
 .conflict-card small {
   color: var(--iv-muted);
   overflow-wrap: anywhere;
+}
+
+.execution-panel {
+  border-color: color-mix(in srgb, var(--iv-accent) 34%, var(--iv-border));
+}
+
+.execution-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.result-card pre {
+  margin: 1rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--iv-muted-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 @media (max-width: 940px) {

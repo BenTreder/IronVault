@@ -27,14 +27,21 @@
         <p class="repo-path">{{ repoPath }}</p>
 
         <label class="setting-label" for="snapshotName">Snapshot</label>
-        <input
+        <select
           id="snapshotName"
           v-model="snapshotName"
           class="restore-input"
-          type="text"
-          placeholder="latest"
-          @input="clearPlanAfterEdit"
-        />
+          @change="clearPlanAfterEdit"
+        >
+          <option value="" disabled>Select a snapshot</option>
+          <option v-for="snapshot in snapshots" :key="snapshot.name" :value="snapshot.name">
+            {{ snapshot.name }} · {{ snapshotFileCount(snapshot) }} files · {{ formatBytes(snapshot.total_size || 0) }}
+          </option>
+        </select>
+
+        <p class="mini-note">
+          {{ snapshotStatusMessage }}
+        </p>
 
         <label class="setting-label" for="targetPath">Restore target</label>
         <input
@@ -153,18 +160,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   formatBytes,
   getRestorePlan,
+  listSnapshots,
   restoreSnapshot,
+  snapshotFileCount,
   type RestorePlanInfo,
-  type RestoreResult
+  type RestoreResult,
+  type SnapshotInfo
 } from '../lib/ironvaultBridge'
 import { loadRepoPath } from '../lib/ironvaultSettings'
 
 const repoPath = ref(loadRepoPath())
-const snapshotName = ref('latest')
+const snapshots = ref<SnapshotInfo[]>([])
+const snapshotName = ref('')
+const snapshotStatusMessage = ref('Loading snapshots from the saved vault path...')
 const targetPath = ref('/tmp/ironvault-gui-restore-preview')
 const plan = ref<RestorePlanInfo | null>(null)
 const restoreResult = ref<RestoreResult | null>(null)
@@ -175,8 +187,13 @@ const status = ref('Waiting')
 const statusClass = ref('status-waiting')
 const statusMessage = ref('Choose a snapshot and target path, then preview the restore plan.')
 
+const planHasRestorableItems = computed(() =>
+  Boolean(plan.value && (plan.value.files > 0 || plan.value.directories > 0 || plan.value.symlinks > 0))
+)
+
 const canRestore = computed(() =>
   Boolean(plan.value?.safe_to_restore) &&
+  planHasRestorableItems.value &&
   restoreConfirmation.value === 'RESTORE' &&
   !isLoading.value &&
   !isRestoring.value
@@ -188,7 +205,26 @@ function clearPlanAfterEdit() {
   restoreConfirmation.value = ''
   status.value = 'Waiting'
   statusClass.value = 'status-waiting'
-  statusMessage.value = 'Path changed. Preview restore again before unlocking files.'
+  statusMessage.value = 'Selection changed. Preview restore again before unlocking files.'
+}
+
+async function loadSnapshotsForRestore() {
+  repoPath.value = loadRepoPath()
+  snapshotStatusMessage.value = 'Loading snapshots from the saved vault path...'
+
+  try {
+    snapshots.value = await listSnapshots(repoPath.value)
+    snapshotName.value = snapshots.value[0]?.name || ''
+    snapshotStatusMessage.value = snapshots.value.length > 0
+      ? `${snapshots.value.length} snapshot(s) available.`
+      : 'No snapshots found. Create a backup before restoring.'
+  } catch (error) {
+    snapshots.value = []
+    snapshotName.value = ''
+    snapshotStatusMessage.value = error instanceof Error
+      ? error.message
+      : 'Could not load snapshots from the saved vault path.'
+  }
 }
 
 async function previewRestore() {
@@ -201,11 +237,30 @@ async function previewRestore() {
   statusMessage.value = 'Asking IronVault to build a restore plan...'
 
   try {
+    const selectedSnapshot = snapshotName.value.trim()
+
+    if (!selectedSnapshot) {
+      plan.value = null
+      status.value = 'Needs backup'
+      statusClass.value = 'status-error'
+      statusMessage.value = 'No snapshot is selected. Create or select a snapshot before previewing restore.'
+      return
+    }
+
     plan.value = await getRestorePlan(
       repoPath.value,
-      snapshotName.value.trim() || 'latest',
+      selectedSnapshot,
       targetPath.value.trim() || '/tmp/ironvault-gui-restore-preview'
     )
+
+    const hasItems = plan.value.files > 0 || plan.value.directories > 0 || plan.value.symlinks > 0
+
+    if (!hasItems) {
+      status.value = 'Empty plan'
+      statusClass.value = 'status-error'
+      statusMessage.value = 'Restore plan is empty. IronVault will not unlock a 0-file restore.'
+      return
+    }
 
     status.value = plan.value.safe_to_restore ? 'Safe preview' : 'Conflicts found'
     statusClass.value = plan.value.safe_to_restore ? 'status-ready' : 'status-error'
@@ -223,6 +278,8 @@ async function previewRestore() {
     isLoading.value = false
   }
 }
+
+onMounted(loadSnapshotsForRestore)
 
 async function executeRestore() {
   if (!plan.value || !canRestore.value) {
@@ -375,6 +432,13 @@ async function executeRestore() {
   background: var(--iv-bg-soft);
   color: var(--iv-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.mini-note {
+  margin: 0.6rem 0 0;
+  color: var(--iv-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .status-badge {

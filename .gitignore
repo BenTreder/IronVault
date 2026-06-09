@@ -14,3 +14,4 @@ frontend/ironvault-gui/src-tauri/gen/
 .ironvault-real-helper-test-source/
 .ironvault-real-helper-test-repo/
 .ironvault-real-helper-test-config/
+release-candidates/

@@ -143,3 +143,23 @@ Next finalization work:
 - Native file picker decision
 - Final icon replacement
 - Release candidate tag
+
+## Phase 32 release candidate checkpoint
+
+Phase 32 produced a local release candidate folder with:
+
+- Release CLI binary
+- Release GUI binary
+- Release notes
+- Git commit marker
+- Git branch marker
+
+The Tauri release build completed successfully and produced the GUI binary at:
+
+frontend/ironvault-gui/src-tauri/target/release/ironvault-gui
+
+Release candidate artifacts are local build outputs and should not be committed to git. They are ignored through .gitignore.
+
+Repeatable build command:
+
+scripts/build-release-candidate.sh 0.1.0-rc1

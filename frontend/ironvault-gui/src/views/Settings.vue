@@ -105,7 +105,7 @@
           placeholder="/home/chr0nichacker/IronVaultBackups"
         />
         <p class="field-help">
-          This is where the backup vault lives. For real use, this should usually be on a backup drive, not inside the folder being backed up.
+          This is where the backup vault lives. Do not put this inside the folder you are backing up. IronVault will block that unsafe setup.
         </p>
 
         <label class="setting-label" for="customConfigPath">IronVault settings file</label>

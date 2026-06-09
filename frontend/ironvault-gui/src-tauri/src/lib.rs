@@ -290,6 +290,49 @@ async fn setup_custom_vault(
         return Err(format!("Source path is not a folder: {}", source.display()));
     }
 
+    let source_canonical = std::fs::canonicalize(&source).map_err(|error| {
+        format!("Could not inspect folder to back up {}: {error}", source.display())
+    })?;
+
+    let repo_compare_path = if repo.exists() {
+        std::fs::canonicalize(&repo).map_err(|error| {
+            format!("Could not inspect backup storage folder {}: {error}", repo.display())
+        })?
+    } else {
+        let repo_parent = repo.parent().ok_or_else(|| {
+            format!("Backup storage folder needs a parent folder: {}", repo.display())
+        })?;
+
+        std::fs::create_dir_all(repo_parent).map_err(|error| {
+            format!("Could not create backup storage parent folder {}: {error}", repo_parent.display())
+        })?;
+
+        let repo_parent_canonical = std::fs::canonicalize(repo_parent).map_err(|error| {
+            format!("Could not inspect backup storage parent folder {}: {error}", repo_parent.display())
+        })?;
+
+        match repo.file_name() {
+            Some(name) => repo_parent_canonical.join(name),
+            None => repo_parent_canonical,
+        }
+    };
+
+    if repo_compare_path == source_canonical || repo_compare_path.starts_with(&source_canonical) {
+        return Err(format!(
+            "Backup storage folder cannot be inside the folder you are backing up. Move the backup storage folder somewhere else. Folder to back up: {} Backup storage folder: {}",
+            source.display(),
+            repo.display()
+        ));
+    }
+
+    if source_canonical.starts_with(&repo_compare_path) {
+        return Err(format!(
+            "Folder to back up cannot be inside the backup storage folder. Choose a normal folder to protect and a separate place to store the vault. Folder to back up: {} Backup storage folder: {}",
+            source.display(),
+            repo.display()
+        ));
+    }
+
     if let Some(parent) = config.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
             format!("Could not create config parent folder {}: {error}", parent.display())

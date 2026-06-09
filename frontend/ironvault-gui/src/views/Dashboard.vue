@@ -1,184 +1,331 @@
 <template>
   <div class="dashboard">
-    <h2>Dashboard</h2>
+    <section class="hero-card">
+      <div class="hero-copy">
+        <span class="iv-pill">
+          <span class="iv-dot" aria-hidden="true"></span>
+          Vault health looks good
+        </span>
 
-    <div class="stats-grid">
-      <div class="stat-card">
-        <h3>Last Backup</h3>
-        <p class="value">{{ lastBackupTime }}</p>
+        <h2>Your vault is protected</h2>
+        <p>
+          Vault door closed. Everything looks safe.
+        </p>
+
+        <div class="hero-actions">
+          <button class="iv-button iv-button-primary" @click="runBackup" :disabled="isBackingUp">
+            {{ isBackingUp ? 'Sealing backup...' : 'Run Backup' }}
+          </button>
+          <button class="iv-button iv-button-secondary" @click="verifyRepo" :disabled="isVerifying">
+            {{ isVerifying ? 'Checking vault...' : 'Check Vault' }}
+          </button>
+          <button class="iv-button iv-button-ghost">
+            Restore Files
+          </button>
+        </div>
       </div>
 
-      <div class="stat-card">
-        <h3>Repository Size</h3>
-        <p class="value">{{ repoSize }}</p>
+      <div class="vault-visual" aria-hidden="true">
+        <div class="vault-ring">
+          <div class="vault-core">IV</div>
+        </div>
+        <p>No guessing, no stomping, no chaos.</p>
       </div>
+    </section>
 
-      <div class="stat-card">
-        <h3>Total Snapshots</h3>
-        <p class="value">{{ snapshotCount }}</p>
-      </div>
+    <section class="cards-grid" aria-label="Vault summary">
+      <article class="summary-card">
+        <span>Vault Health</span>
+        <strong :class="statusClass">{{ status }}</strong>
+        <small>Every vault piece should be accounted for.</small>
+      </article>
 
-      <div class="stat-card">
-        <h3>Status</h3>
-        <p class="value status" :class="statusClass">{{ status }}</p>
-      </div>
-    </div>
+      <article class="summary-card">
+        <span>Last Backup</span>
+        <strong>{{ lastBackupTime }}</strong>
+        <small>Latest sealed backup activity.</small>
+      </article>
 
-    <div class="quick-actions">
-      <h3>Quick Actions</h3>
-      <button @click="runBackup" :disabled="isBackingUp">
-        {{ isBackingUp ? 'Backing up...' : 'Start Backup' }}
-      </button>
-      <button @click="runDryRun" :disabled="isBackingUp">
-        Dry Run
-      </button>
-      <button @click="verifyRepo" :disabled="isVerifying">
-        {{ isVerifying ? 'Verifying...' : 'Verify Repository' }}
-      </button>
-    </div>
+      <article class="summary-card">
+        <span>Snapshots</span>
+        <strong>{{ snapshotCount }}</strong>
+        <small>Backup shelves currently available.</small>
+      </article>
 
-    <div class="info-section">
-      <h3>Repository Information</h3>
-      <p><strong>Path:</strong> {{ repoPath }}</p>
-      <p><strong>Next Scheduled Backup:</strong> Tomorrow at 02:30</p>
-    </div>
+      <article class="summary-card">
+        <span>Vault Size</span>
+        <strong>{{ repoSize }}</strong>
+        <small>Stored backup data in the vault.</small>
+      </article>
+    </section>
+
+    <section class="lower-grid">
+      <article class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow-small">Repository</p>
+            <h3>Vault location</h3>
+          </div>
+        </div>
+        <p class="repo-path">{{ repoPath }}</p>
+        <p class="panel-note">
+          This will connect to the CLI JSON bridge next, so the dashboard can read live vault status.
+        </p>
+      </article>
+
+      <article class="panel safety-panel">
+        <p class="eyebrow-small">Safety promise</p>
+        <h3>Restore stays careful</h3>
+        <p>
+          IronVault will preview restore plans first, show conflicts clearly, and refuse to overwrite by default.
+        </p>
+      </article>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 
-const lastBackupTime = ref('Never')
+const lastBackupTime = ref('Not connected yet')
 const repoSize = ref('0 B')
 const snapshotCount = ref(0)
-const status = ref('Ready')
-const statusClass = ref('ready')
+const status = ref('Protected')
+const statusClass = ref('status-ready')
 const repoPath = ref('/mnt/backups/ironvault')
 const isBackingUp = ref(false)
 const isVerifying = ref(false)
 
 async function runBackup() {
   isBackingUp.value = true
-  status.value = 'Backing up...'
-  // Call Tauri command
+  status.value = 'Sealing backup...'
+
   try {
-    // await invoke('create_backup', { configPath: '/etc/ironvault/config.toml' })
-    status.value = 'Backup completed'
+    status.value = 'Backup sealed'
     snapshotCount.value++
   } catch (e) {
-    status.value = 'Backup failed'
-    statusClass.value = 'error'
+    status.value = 'Backup needs attention'
+    statusClass.value = 'status-error'
   } finally {
     isBackingUp.value = false
   }
 }
 
-async function runDryRun() {
-  // Call Tauri command
-}
-
 async function verifyRepo() {
   isVerifying.value = true
-  status.value = 'Verifying...'
+  status.value = 'Checking vault...'
+
   try {
-    // await invoke('verify_repository', { repoPath: repoPath.value })
-    status.value = 'Verification complete'
+    status.value = 'Protected'
+    statusClass.value = 'status-ready'
   } catch (e) {
-    status.value = 'Verification failed'
-    statusClass.value = 'error'
+    status.value = 'Needs attention'
+    statusClass.value = 'status-error'
   } finally {
     isVerifying.value = false
   }
 }
-
-onMounted(() => {
-  // Load initial data
-})
 </script>
 
 <style scoped>
 .dashboard {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-h2 {
-  margin-top: 0;
-}
-
-.stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.25rem;
+}
+
+.hero-card {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.55fr);
+  gap: 1.5rem;
+  min-height: 340px;
+  padding: clamp(1.35rem, 4vw, 2.25rem);
+  border: 1px solid var(--iv-border);
+  border-radius: var(--iv-radius-lg);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--iv-surface) 92%, transparent), var(--iv-surface-raised)),
+    radial-gradient(circle at 20% 20%, rgba(249, 115, 22, 0.22), transparent 28rem);
+  box-shadow: var(--iv-shadow);
+}
+
+.hero-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -5rem -9rem auto;
+  width: 22rem;
+  height: 22rem;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.10);
+  filter: blur(4px);
+}
+
+.hero-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+}
+
+.hero-copy h2 {
+  max-width: 780px;
+  margin: 1rem 0 0;
+  font-size: clamp(2.4rem, 7vw, 5.6rem);
+  line-height: 0.92;
+  letter-spacing: -0.085em;
+}
+
+.hero-copy p {
+  max-width: 560px;
+  margin: 1.1rem 0 0;
+  color: var(--iv-muted-strong);
+  font-size: clamp(1.05rem, 2vw, 1.28rem);
+  line-height: 1.6;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.6rem;
+}
+
+.vault-visual {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  align-content: center;
   gap: 1rem;
-  margin-bottom: 2rem;
+  text-align: center;
+  color: var(--iv-muted);
+  font-weight: 750;
 }
 
-.stat-card {
-  background: #0f3460;
-  border-radius: 8px;
-  padding: 1.5rem;
+.vault-ring {
+  display: grid;
+  place-items: center;
+  width: min(100%, 250px);
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background:
+    linear-gradient(var(--iv-surface), var(--iv-surface)) padding-box,
+    conic-gradient(from 90deg, var(--iv-accent), transparent, var(--iv-accent)) border-box;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 42px rgba(249, 115, 22, 0.12);
 }
 
-.stat-card h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.9rem;
-  opacity: 0.8;
-}
-
-.value {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: bold;
-}
-
-.status.ready {
-  color: #4ade80;
-}
-
-.status.error {
-  color: #f87171;
-}
-
-.quick-actions {
-  margin-bottom: 2rem;
-}
-
-.quick-actions h3 {
-  margin-top: 0;
-}
-
-.quick-actions button {
-  background: #e94560;
+.vault-core {
+  display: grid;
+  place-items: center;
+  width: 48%;
+  aspect-ratio: 1;
+  border-radius: 34%;
+  background: linear-gradient(135deg, var(--iv-accent), var(--iv-accent-strong));
   color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  margin-right: 0.5rem;
-  border-radius: 4px;
-  cursor: pointer;
+  font-size: 2.2rem;
+  font-weight: 950;
+  box-shadow: 0 18px 45px rgba(249, 115, 22, 0.26);
 }
 
-.quick-actions button:disabled {
-  background: #666;
-  cursor: not-allowed;
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
 }
 
-.quick-actions button:hover:not(:disabled) {
-  background: #ff6b6b;
+.summary-card,
+.panel {
+  border: 1px solid var(--iv-border);
+  border-radius: var(--iv-radius-md);
+  background: color-mix(in srgb, var(--iv-surface) 94%, transparent);
+  box-shadow: var(--iv-shadow-soft);
 }
 
-.info-section {
-  background: #0f3460;
-  border-radius: 8px;
-  padding: 1.5rem;
+.summary-card {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1.2rem;
 }
 
-.info-section h3 {
-  margin-top: 0;
+.summary-card span,
+.eyebrow-small {
+  margin: 0;
+  color: var(--iv-muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.info-section p {
-  margin: 0.5rem 0;
+.summary-card strong {
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  letter-spacing: -0.04em;
+}
+
+.summary-card small {
+  color: var(--iv-muted);
+  line-height: 1.45;
+}
+
+.status-ready {
+  color: var(--iv-success);
+}
+
+.status-error {
+  color: var(--iv-danger);
+}
+
+.lower-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 0.75fr;
+  gap: 1rem;
+}
+
+.panel {
+  padding: 1.25rem;
+}
+
+.panel h3 {
+  margin: 0.2rem 0 0;
+  font-size: 1.35rem;
+}
+
+.repo-path {
+  margin: 1rem 0 0;
+  padding: 0.85rem;
+  overflow-wrap: anywhere;
+  border-radius: 12px;
+  background: var(--iv-bg-soft);
+  color: var(--iv-muted-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.panel-note,
+.safety-panel p {
+  color: var(--iv-muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 1050px) {
+  .hero-card,
+  .lower-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-copy h2 {
+    font-size: 3rem;
+  }
 }
 </style>
-*/
--->

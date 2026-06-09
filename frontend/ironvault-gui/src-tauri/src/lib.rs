@@ -52,6 +52,26 @@ struct SnapshotsResponse {
     snapshots: Vec<SnapshotInfo>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct RestoreConflict {
+    source_path: String,
+    target_path: String,
+    kind: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RestorePlanInfo {
+    snapshot: String,
+    target: String,
+    files: usize,
+    directories: usize,
+    symlinks: usize,
+    total_size: u64,
+    conflict_count: usize,
+    safe_to_restore: bool,
+    conflicts: Vec<RestoreConflict>,
+}
+
 #[tauri::command]
 fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -96,6 +116,28 @@ async fn create_backup(config_path: String) -> Result<BackupResult, String> {
     Ok(BackupResult {
         success: true,
         message: output,
+    })
+}
+
+#[tauri::command]
+async fn restore_plan(
+    repo_path: String,
+    snapshot: String,
+    target_path: String,
+) -> Result<RestorePlanInfo, String> {
+    let output = run_ironvault(&[
+        "restore-plan",
+        "--repo",
+        &repo_path,
+        "--snapshot",
+        &snapshot,
+        "--target",
+        &target_path,
+        "--json",
+    ])?;
+
+    serde_json::from_str(&output).map_err(|error| {
+        format!("IronVault returned restore plan data that the GUI could not read: {error}")
     })
 }
 
@@ -157,6 +199,7 @@ pub fn run() {
             init_repository,
             list_snapshots,
             create_backup,
+            restore_plan,
             get_info,
             verify_repository,
         ])

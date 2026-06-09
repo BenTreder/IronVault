@@ -23,6 +23,24 @@ export interface SnapshotInfo {
   total_size?: number
 }
 
+export interface RestoreConflict {
+  source_path: string
+  target_path: string
+  kind: string
+}
+
+export interface RestorePlanInfo {
+  snapshot: string
+  target: string
+  files: number
+  directories: number
+  symlinks: number
+  total_size: number
+  conflict_count: number
+  safe_to_restore: boolean
+  conflicts: RestoreConflict[]
+}
+
 export const defaultRepoPath = '/mnt/backups/ironvault'
 
 export async function getRepoInfo(repoPath: string): Promise<RepoInfo> {
@@ -35,6 +53,18 @@ export async function verifyRepository(repoPath: string): Promise<VerifyResult> 
 
 export async function listSnapshots(repoPath: string): Promise<SnapshotInfo[]> {
   return await invoke<SnapshotInfo[]>('list_snapshots', { repoPath })
+}
+
+export async function getRestorePlan(
+  repoPath: string,
+  snapshot: string,
+  targetPath: string
+): Promise<RestorePlanInfo> {
+  return await invoke<RestorePlanInfo>('restore_plan', {
+    repoPath,
+    snapshot,
+    targetPath
+  })
 }
 
 export function snapshotFileCount(snapshot: SnapshotInfo): number {

@@ -486,6 +486,7 @@ impl RestoreManager {
 /// Display a restore plan
 pub fn display_plan(plan: &RestorePlan) {
     println!("Restore Plan:");
+    println!("  IronVault checked the map before opening the vault.");
     println!("  Snapshot: {}", plan.snapshot.name);
     println!("  Target: {}", plan.target.display());
     println!("  Files: {}", plan.file_count());

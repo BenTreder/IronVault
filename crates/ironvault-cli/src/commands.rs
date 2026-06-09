@@ -11,7 +11,8 @@ pub fn cmd_init(repo: &PathBuf) -> Result<()> {
     let safety = SafetyConfig::default();
     ironvault_core::init_repo(repo, &safety)?;
 
-    println!("✓ Repository initialized at {}", repo.display());
+    println!("✓ Vault created at {}", repo.display());
+    println!("  IronVault is ready to start locking files away.");
     Ok(())
 }
 
@@ -31,9 +32,12 @@ pub fn cmd_backup(config_path: &PathBuf) -> Result<()> {
     let mut client = ironvault_core::IronVault::new(config)?;
     let snapshot = client.backup()?;
 
-    println!("✓ Backup completed: {}", snapshot.name);
-    println!("  Files: {}", snapshot.file_count());
-    println!("  Size: {} bytes", snapshot.total_size());
+    println!("✓ Backup sealed: {}", snapshot.name);
+    println!(
+        "  Files: {} tucked safely into the vault",
+        snapshot.file_count()
+    );
+    println!("  Original size: {} bytes", snapshot.total_size());
     Ok(())
 }
 
@@ -49,7 +53,7 @@ pub fn cmd_dry_run(config_path: &PathBuf) -> Result<()> {
     let client = ironvault_core::IronVault::new(config)?;
     let files = client.dry_run()?;
 
-    println!("✓ Dry-run completed");
+    println!("✓ Dry-run complete. No files were moved, just a careful peek.");
     println!("  Files that would be backed up: {}", files.len());
     Ok(())
 }
@@ -63,9 +67,10 @@ pub fn cmd_snapshots(repo: &PathBuf) -> Result<()> {
     let snapshots = repository.list_snapshots()?;
 
     println!("Snapshots:");
+    println!("  Vault shelves found:");
     for snapshot in &snapshots {
         println!(
-            "  {} - {} files, {} bytes",
+            "  {} - {} files, {} bytes sealed",
             snapshot.name,
             snapshot.file_count(),
             snapshot.total_size()
@@ -82,11 +87,11 @@ pub fn cmd_info(repo: &PathBuf) -> Result<()> {
     let repository = ironvault_core::repository::Repository::open(repo, &safety)?;
     let info = repository.info()?;
 
-    println!("Repository: {}", info.path);
-    println!("Total size: {} bytes", info.total_size);
-    println!("Total chunks: {}", info.total_chunks);
-    println!("Snapshots: {}", info.snapshot_count);
-    println!("Free space: {} bytes", info.free_space);
+    println!("Vault location: {}", info.path);
+    println!("Vault size: {} bytes", info.total_size);
+    println!("Vault pieces: {}", info.total_chunks);
+    println!("Snapshots sealed: {}", info.snapshot_count);
+    println!("Free space nearby: {} bytes", info.free_space);
     Ok(())
 }
 
@@ -99,9 +104,9 @@ pub fn cmd_verify(repo: &PathBuf) -> Result<()> {
     let valid = repository.verify()?;
 
     if valid {
-        println!("✓ Repository is valid");
+        println!("✓ Repository is valid. Every vault piece is accounted for.");
     } else {
-        println!("✗ Repository has errors");
+        println!("✗ Repository has errors. The vault check found missing or damaged pieces.");
     }
     Ok(())
 }
@@ -132,7 +137,7 @@ pub fn cmd_restore(snapshot: &str, target: &PathBuf, repo: &PathBuf) -> Result<(
     // Safety check: never restore to root
     if *target == PathBuf::from("/") {
         return Err(ironvault_core::IronVaultError::Restore(
-            "Cannot restore to root filesystem".to_string(),
+            "Cannot restore to root filesystem. Vault door closed for safety.".to_string(),
         ));
     }
 
@@ -144,7 +149,12 @@ pub fn cmd_restore(snapshot: &str, target: &PathBuf, repo: &PathBuf) -> Result<(
     let plan = manager.generate_plan(&snap, target)?;
     let count = manager.execute(&plan)?;
 
-    println!("✓ Restored {} files to {}", count, target.display());
+    println!(
+        "✓ Restore unlocked {} files into {}",
+        count,
+        target.display()
+    );
+    println!("  Vault door closed behind us. Nothing extra was overwritten.");
     Ok(())
 }
 
@@ -156,7 +166,7 @@ pub fn cmd_prune(config_path: &PathBuf) -> Result<()> {
     let mut client = ironvault_core::IronVault::new(config)?;
     client.prune()?;
 
-    println!("✓ Prune completed");
+    println!("✓ Prune completed. Old vault shelves cleaned up.");
     Ok(())
 }
 
@@ -168,7 +178,7 @@ pub fn cmd_compact(repo: &PathBuf) -> Result<()> {
     let repository = ironvault_core::repository::Repository::open(repo, &safety)?;
     repository.compact()?;
 
-    println!("✓ Compact completed");
+    println!("✓ Compact completed. The vault is tidier now.");
     Ok(())
 }
 

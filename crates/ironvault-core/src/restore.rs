@@ -94,6 +94,21 @@ impl RestoreConflict {
     }
 }
 
+/// Restore behavior when a target path already exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestoreIfExists {
+    /// Refuse to restore over any existing file or symlink target.
+    Refuse,
+    /// Leave existing targets untouched and restore only missing targets.
+    Skip,
+}
+
+impl Default for RestoreIfExists {
+    fn default() -> Self {
+        Self::Refuse
+    }
+}
+
 /// Restore manager
 pub struct RestoreManager {
     repo_path: PathBuf,
@@ -242,8 +257,17 @@ impl RestoreManager {
         Ok(target.join(clean))
     }
 
-    /// Execute a restore plan
+    /// Execute a restore plan using the safest default behavior.
     pub fn execute(&self, plan: &RestorePlan) -> Result<usize> {
+        self.execute_with_if_exists(plan, RestoreIfExists::Refuse)
+    }
+
+    /// Execute a restore plan with explicit existing-target behavior.
+    pub fn execute_with_if_exists(
+        &self,
+        plan: &RestorePlan,
+        if_exists: RestoreIfExists,
+    ) -> Result<usize> {
         let _span = span!(Level::INFO, "execute_restore");
 
         info!(
@@ -251,10 +275,11 @@ impl RestoreManager {
             target = plan.target.display().to_string(),
             files = plan.files.len(),
             conflicts = plan.conflict_count(),
+            if_exists = ?if_exists,
             "Starting restore"
         );
 
-        if plan.has_conflicts() {
+        if plan.has_conflicts() && if_exists == RestoreIfExists::Refuse {
             let first = &plan.conflicts[0];
             return Err(IronVaultError::Restore(format!(
                 "Vault door closed. Restore plan has {} conflict(s). First conflict: {} -> {} ({})",
@@ -268,18 +293,21 @@ impl RestoreManager {
         // Create target directory
         fs::create_dir_all(&plan.target)?;
 
-        self.preflight_target_conflicts(plan)?;
+        if if_exists == RestoreIfExists::Refuse {
+            self.preflight_target_conflicts(plan)?;
+        }
+
         self.create_directories(plan)?;
 
         // Restore files
         let mut restored = 0;
         for item in &plan.files {
-            if self.restore_file(item)? {
+            if self.restore_file(item, if_exists)? {
                 restored += 1;
             }
         }
 
-        self.restore_symlinks(plan)?;
+        self.restore_symlinks(plan, if_exists)?;
         self.apply_directory_metadata(plan)?;
 
         info!(
@@ -352,7 +380,7 @@ impl RestoreManager {
     }
 
     /// Restore symlinks from the snapshot.
-    fn restore_symlinks(&self, plan: &RestorePlan) -> Result<usize> {
+    fn restore_symlinks(&self, plan: &RestorePlan, if_exists: RestoreIfExists) -> Result<usize> {
         let mut restored = 0;
 
         for link in &plan.snapshot.symlinks {
@@ -364,7 +392,12 @@ impl RestoreManager {
                 fs::create_dir_all(parent)?;
             }
 
-            Self::reject_existing_restore_target(&target_path)?;
+            if Self::restore_target_exists(&target_path) {
+                match if_exists {
+                    RestoreIfExists::Refuse => Self::reject_existing_restore_target(&target_path)?,
+                    RestoreIfExists::Skip => continue,
+                }
+            }
 
             #[cfg(unix)]
             {
@@ -425,10 +458,15 @@ impl RestoreManager {
     }
 
     /// Restore a single file
-    fn restore_file(&self, item: &RestoreItem) -> Result<bool> {
+    fn restore_file(&self, item: &RestoreItem, if_exists: RestoreIfExists) -> Result<bool> {
         let target_path = &item.target_path;
 
-        Self::reject_existing_restore_target(target_path)?;
+        if Self::restore_target_exists(target_path) {
+            match if_exists {
+                RestoreIfExists::Refuse => Self::reject_existing_restore_target(target_path)?,
+                RestoreIfExists::Skip => return Ok(false),
+            }
+        }
 
         // Create parent directories
         if let Some(parent) = target_path.parent() {

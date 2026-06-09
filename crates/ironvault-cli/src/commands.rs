@@ -167,7 +167,12 @@ pub fn cmd_restore_plan(
 }
 
 /// Execute restore
-pub fn cmd_restore(snapshot: &str, target: &PathBuf, repo: &PathBuf) -> Result<()> {
+pub fn cmd_restore(
+    snapshot: &str,
+    target: &PathBuf,
+    repo: &PathBuf,
+    if_exists: &str,
+) -> Result<()> {
     info!("Restoring {} to {}", snapshot, target.display());
 
     // Safety check: never restore to root
@@ -183,14 +188,24 @@ pub fn cmd_restore(snapshot: &str, target: &PathBuf, repo: &PathBuf) -> Result<(
 
     let manager = ironvault_core::restore::RestoreManager::new(repo);
     let plan = manager.generate_plan(&snap, target)?;
-    let count = manager.execute(&plan)?;
+
+    let if_exists_mode = match if_exists {
+        "skip" => ironvault_core::restore::RestoreIfExists::Skip,
+        _ => ironvault_core::restore::RestoreIfExists::Refuse,
+    };
+
+    let count = manager.execute_with_if_exists(&plan, if_exists_mode)?;
 
     println!(
         "✓ Restore unlocked {} files into {}",
         count,
         target.display()
     );
-    println!("  Vault door closed behind us. Nothing extra was overwritten.");
+    if if_exists == "skip" {
+        println!("  Skipped existing targets. IronVault only unlocked what was missing.");
+    } else {
+        println!("  Vault door closed behind us. Nothing extra was overwritten.");
+    }
     Ok(())
 }
 

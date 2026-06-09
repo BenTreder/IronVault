@@ -263,6 +263,39 @@ log_level = "info"
         "existing file should stay safe\n"
     );
 
+    let restore_skip_cmd = Command::new(bin)
+        .args(["restore", "--repo"])
+        .arg(&repo)
+        .args(["--snapshot", "latest", "--target"])
+        .arg(&restore)
+        .args(["--if-exists", "skip"])
+        .output()
+        .unwrap();
+    assert!(
+        restore_skip_cmd.status.success(),
+        "restore with --if-exists skip should succeed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&restore_skip_cmd.stdout),
+        String::from_utf8_lossy(&restore_skip_cmd.stderr)
+    );
+    let restore_skip_stdout = String::from_utf8_lossy(&restore_skip_cmd.stdout);
+    assert!(
+        restore_skip_stdout.contains("Skipped existing targets"),
+        "restore skip stdout was:\n{}",
+        restore_skip_stdout
+    );
+    assert_eq!(
+        fs::read_to_string(restore.join("source/test.txt")).unwrap(),
+        "existing file should stay safe\n"
+    );
+    assert_eq!(
+        fs::read_to_string(restore.join("source/subdir/second.txt")).unwrap(),
+        "second file\n"
+    );
+    assert_eq!(
+        fs::read_to_string(restore.join("source/subdir/duplicate.txt")).unwrap(),
+        "hello ironvault\n"
+    );
+
     fs::remove_dir_all(&restore).unwrap();
 
     let restore_plan_clean_cmd = Command::new(bin)

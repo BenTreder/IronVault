@@ -84,6 +84,9 @@ enum Commands {
         /// Repository path
         #[arg(short, long)]
         repo: PathBuf,
+        /// What to do if a restore target already exists: refuse or skip
+        #[arg(long, default_value = "refuse", value_parser = ["refuse", "skip"])]
+        if_exists: String,
     },
     /// Prune old snapshots
     Prune {
@@ -129,7 +132,8 @@ fn main() -> Result<()> {
             snapshot,
             target,
             repo,
-        } => cmd_restore(snapshot, target, repo)?,
+            if_exists,
+        } => cmd_restore(snapshot, target, repo, if_exists)?,
         Commands::Prune { config } => cmd_prune(config)?,
         Commands::Compact { repo } => cmd_compact(repo)?,
     }

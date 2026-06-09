@@ -28,6 +28,9 @@ IronVault is a custom Rust backup tool focused on safe local backups, restore sa
 - Repository verification
 - Missing chunk detection
 - CLI wording polish with IronVault personality
+- Restore-plan JSON output for GUI and automation use
+- Safe restore skip mode with --if-exists skip
+- GUI-ready JSON outputs for info, snapshots, verify, and restore-plan
 
 ## Current safety guarantees
 
@@ -88,22 +91,20 @@ Avoid:
 
 ## Recommended next phase
 
-Phase 11 should add structured restore-plan output for GUI use.
+Phase 15 should start the Tauri GUI bridge.
 
-Suggested command:
+The CLI now has enough JSON output for the desktop app to read real project state without scraping human text.
 
-ironvault restore-plan --repo ./repo --snapshot latest --target ./restore --json
+Available GUI-friendly commands:
 
-Suggested JSON fields:
+- ironvault info --repo ./repo --json
+- ironvault snapshots --repo ./repo --json
+- ironvault verify --repo ./repo --json
+- ironvault restore-plan --repo ./repo --snapshot latest --target ./restore --json
 
-- snapshot
-- target
-- files
-- directories
-- symlinks
-- total_size
-- conflicts
-- safe_to_restore
+Restore safety command now available:
+
+- ironvault restore --repo ./repo --snapshot latest --target ./restore --if-exists skip
 
 ## Quality gate
 

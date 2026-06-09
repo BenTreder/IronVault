@@ -32,6 +32,27 @@ struct BackupResult {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct BackupConfigSourcePreview {
+    path: String,
+    exists: bool,
+    is_dir: bool,
+    files: u64,
+    directories: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BackupConfigPreview {
+    config_path: String,
+    repo_path: String,
+    repo_exists: bool,
+    sources: Vec<BackupConfigSourcePreview>,
+    total_files: u64,
+    total_directories: u64,
+    ready: bool,
+    message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct RepoInfo {
     path: String,
     snapshot_count: usize,
@@ -96,6 +117,64 @@ struct SetupCustomVaultResult {
     message: String,
 }
 
+
+fn extract_toml_string_value(line: &str) -> Option<String> {
+    let (_, value) = line.split_once('=')?;
+    let value = value.trim();
+    let rest = value.strip_prefix('"')?;
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+fn extract_toml_string_array(line: &str) -> Vec<String> {
+    let Some((_, value)) = line.split_once('=') else {
+        return Vec::new();
+    };
+
+    let value = value.trim();
+    let Some(start) = value.find('[') else {
+        return Vec::new();
+    };
+
+    let Some(end) = value.rfind(']') else {
+        return Vec::new();
+    };
+
+    value[start + 1..end]
+        .split(',')
+        .filter_map(|part| {
+            let part = part.trim();
+            let rest = part.strip_prefix('"')?;
+            let end = rest.find('"')?;
+            Some(rest[..end].to_string())
+        })
+        .collect()
+}
+
+fn count_files_and_dirs(path: &std::path::Path) -> (u64, u64) {
+    let mut files = 0;
+    let mut directories = 0;
+
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return (files, directories);
+    };
+
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+
+        if entry_path.is_dir() {
+            directories += 1;
+            let (child_files, child_dirs) = count_files_and_dirs(&entry_path);
+            files += child_files;
+            directories += child_dirs;
+        } else if entry_path.is_file() {
+            files += 1;
+        }
+    }
+
+    (files, directories)
+}
+
 #[tauri::command]
 fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -131,6 +210,104 @@ async fn list_snapshots(repo_path: String) -> Result<Vec<SnapshotInfo>, String> 
     })?;
 
     Ok(parsed.snapshots)
+}
+
+#[tauri::command]
+async fn preview_backup_config(config_path: String) -> Result<BackupConfigPreview, String> {
+    let config_path = config_path.trim().to_string();
+
+    if config_path.is_empty() {
+        return Err("Choose an IronVault settings file first.".to_string());
+    }
+
+    let config_file = std::path::PathBuf::from(&config_path);
+    let config_text = std::fs::read_to_string(&config_file).map_err(|error| {
+        format!("Could not read IronVault settings file {}: {error}", config_file.display())
+    })?;
+
+    let mut section = String::new();
+    let mut repo_path = String::new();
+    let mut source_paths: Vec<String> = Vec::new();
+
+    for raw_line in config_text.lines() {
+        let line = raw_line.trim();
+
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            section = line.trim_matches(&['[', ']'][..]).to_string();
+            continue;
+        }
+
+        if section == "repo" && line.starts_with("path") {
+            if let Some(path) = extract_toml_string_value(line) {
+                repo_path = path;
+            }
+        }
+
+        if section == "backup" && line.starts_with("sources") {
+            source_paths = extract_toml_string_array(line);
+        }
+    }
+
+    let repo_exists = !repo_path.is_empty() && std::path::Path::new(&repo_path).exists();
+
+    let mut sources = Vec::new();
+    let mut total_files = 0;
+    let mut total_directories = 0;
+
+    for source_path in source_paths {
+        let source = std::path::PathBuf::from(&source_path);
+        let exists = source.exists();
+        let is_dir = source.is_dir();
+        let (files, directories) = if exists && is_dir {
+            count_files_and_dirs(&source)
+        } else {
+            (0, 0)
+        };
+
+        total_files += files;
+        total_directories += directories;
+
+        sources.push(BackupConfigSourcePreview {
+            path: source_path,
+            exists,
+            is_dir,
+            files,
+            directories,
+        });
+    }
+
+    let has_sources = !sources.is_empty();
+    let all_sources_ready = has_sources && sources.iter().all(|source| source.exists && source.is_dir);
+    let ready = !repo_path.is_empty() && all_sources_ready;
+
+    let message = if ready {
+        format!(
+            "Ready to back up {} file(s) from {} folder(s).",
+            total_files,
+            sources.len()
+        )
+    } else if repo_path.is_empty() {
+        "Settings file is missing the backup storage folder.".to_string()
+    } else if !has_sources {
+        "Settings file is missing the folder to back up.".to_string()
+    } else {
+        "One or more folders to back up are missing or not folders.".to_string()
+    };
+
+    Ok(BackupConfigPreview {
+        config_path,
+        repo_path,
+        repo_exists,
+        sources,
+        total_files,
+        total_directories,
+        ready,
+        message,
+    })
 }
 
 #[tauri::command]
@@ -537,6 +714,7 @@ pub fn run() {
             init_repository,
             list_snapshots,
             create_backup,
+            preview_backup_config,
             setup_test_vault,
             setup_custom_vault,
             restore_plan,

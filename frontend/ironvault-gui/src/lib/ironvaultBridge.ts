@@ -18,6 +18,25 @@ export interface BackupResult {
   message: string
 }
 
+export interface BackupConfigSourcePreview {
+  path: string
+  exists: boolean
+  is_dir: boolean
+  files: number
+  directories: number
+}
+
+export interface BackupConfigPreview {
+  config_path: string
+  repo_path: string
+  repo_exists: boolean
+  sources: BackupConfigSourcePreview[]
+  total_files: number
+  total_directories: number
+  ready: boolean
+  message: string
+}
+
 export interface SetupTestVaultResult {
   repo_path: string
   config_path: string
@@ -79,6 +98,10 @@ export async function verifyRepository(repoPath: string): Promise<VerifyResult> 
 
 export async function createBackup(configPath: string): Promise<BackupResult> {
   return await invoke<BackupResult>('create_backup', { configPath })
+}
+
+export async function previewBackupConfig(configPath: string): Promise<BackupConfigPreview> {
+  return await invoke<BackupConfigPreview>('preview_backup_config', { configPath })
 }
 
 export async function setupTestVault(): Promise<SetupTestVaultResult> {

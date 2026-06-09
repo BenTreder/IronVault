@@ -5,7 +5,7 @@
         <p class="eyebrow-small">Backup</p>
         <h2>Seal a new snapshot</h2>
         <p>
-          Run a backup from a saved IronVault config file. This keeps the GUI honest and lets the core engine do the real work.
+          Run a backup from a saved IronVault settings file. Check the setup first, then type SEAL when everything looks right.
         </p>
       </div>
 
@@ -18,25 +18,31 @@
       <article class="panel">
         <div class="panel-heading">
           <div>
-            <p class="eyebrow-small">Backup config</p>
+            <p class="eyebrow-small">IronVault settings file</p>
             <h3>Choose what IronVault should run</h3>
           </div>
           <span :class="['status-badge', statusClass]">{{ status }}</span>
         </div>
 
-        <label class="setting-label" for="configPath">Config path</label>
+        <label class="setting-label" for="configPath">IronVault settings file</label>
         <input
           id="configPath"
           v-model="configPath"
           class="backup-input"
           type="text"
-          placeholder="/tmp/ironvault-gui-live-test/ironvault.toml"
+          placeholder="/home/chr0nichacker/.config/ironvault/ironvault.toml"
           @input="clearResult"
         />
 
         <p class="mini-note">
-          For the current test vault, use /tmp/ironvault-gui-live-test/ironvault.toml.
+          This is the small file that remembers your folder to back up and backup storage folder.
         </p>
+
+        <div class="button-row">
+          <button class="iv-button iv-button-secondary" type="button" @click="refreshBackupPreview" :disabled="isPreviewLoading">
+            {{ isPreviewLoading ? 'Checking...' : 'Check setup' }}
+          </button>
+        </div>
 
         <label class="setting-label" for="backupConfirm">Confirmation</label>
         <input
@@ -70,6 +76,48 @@
           </div>
         </div>
       </article>
+    </section>
+
+    <section v-if="configPreview" class="panel setup-preview">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow-small">Setup preview</p>
+          <h3>{{ configPreview.ready ? 'Ready to back up' : 'Needs attention' }}</h3>
+        </div>
+        <span :class="['status-badge', configPreview.ready ? 'status-ready' : 'status-error']">
+          {{ configPreview.ready ? 'Ready' : 'Check setup' }}
+        </span>
+      </div>
+
+      <p class="panel-note">{{ configPreview.message }}</p>
+
+      <div class="preview-grid">
+        <div>
+          <span>Backup storage folder</span>
+          <strong>{{ configPreview.repo_path || 'Not set' }}</strong>
+          <small>{{ configPreview.repo_exists ? 'Folder exists' : 'Folder will be created or initialized' }}</small>
+        </div>
+        <div>
+          <span>Files found</span>
+          <strong>{{ configPreview.total_files }}</strong>
+          <small>{{ configPreview.total_directories }} folder(s) inside source</small>
+        </div>
+      </div>
+
+      <div class="source-list">
+        <p class="eyebrow-small">Folder(s) to back up</p>
+        <div v-for="source in configPreview.sources" :key="source.path" class="source-row">
+          <div>
+            <strong>{{ source.path }}</strong>
+            <small>
+              {{ source.exists && source.is_dir ? `${source.files} file(s), ${source.directories} folder(s)` : 'Missing or not a folder' }}
+            </small>
+          </div>
+          <span :class="['status-badge', source.exists && source.is_dir ? 'status-ready' : 'status-error']">
+            {{ source.exists && source.is_dir ? 'Found' : 'Missing' }}
+          </span>
+        </div>
+      </div>
     </section>
 
     <section v-if="latestSnapshot" class="panel">
@@ -111,7 +159,9 @@ import {
   createBackup,
   formatBytes,
   listSnapshots,
+  previewBackupConfig,
   snapshotFileCount,
+  type BackupConfigPreview,
   type BackupResult,
   type SnapshotInfo
 } from '../lib/ironvaultBridge'
@@ -123,11 +173,13 @@ const repoPath = ref(loadRepoPath())
 const configPath = ref(localStorage.getItem('ironvault-backup-config-path') || defaultConfigPath)
 const backupConfirmation = ref('')
 const backupResult = ref<BackupResult | null>(null)
+const configPreview = ref<BackupConfigPreview | null>(null)
 const snapshots = ref<SnapshotInfo[]>([])
 const isRunning = ref(false)
+const isPreviewLoading = ref(false)
 const status = ref('Waiting')
 const statusClass = ref('status-waiting')
-const statusMessage = ref('Type SEAL to unlock backup execution from this config file.')
+const statusMessage = ref('Check setup before running a backup, then type SEAL to unlock backup execution.')
 
 const totalFiles = computed(() =>
   snapshots.value.reduce((sum, snapshot) => sum + snapshotFileCount(snapshot), 0)
@@ -138,15 +190,29 @@ const latestSnapshot = computed(() => snapshots.value[0] || null)
 const canRunBackup = computed(() =>
   configPath.value.trim().length > 0 &&
   backupConfirmation.value === 'SEAL' &&
-  !isRunning.value
+  !isRunning.value &&
+  !isPreviewLoading.value
 )
+
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error
+  }
+
+  return fallback
+}
 
 function clearResult() {
   backupResult.value = null
+  configPreview.value = null
   localStorage.setItem('ironvault-backup-config-path', configPath.value.trim())
   status.value = 'Waiting'
   statusClass.value = 'status-waiting'
-  statusMessage.value = 'Config path changed. Type SEAL again before running backup.'
+  statusMessage.value = 'Settings file changed. Check setup again, then type SEAL before running backup.'
   backupConfirmation.value = ''
 }
 
@@ -160,8 +226,39 @@ async function refreshSnapshots() {
   }
 }
 
+async function refreshBackupPreview() {
+  isPreviewLoading.value = true
+  backupResult.value = null
+  localStorage.setItem('ironvault-backup-config-path', configPath.value.trim())
+
+  try {
+    const preview = await previewBackupConfig(configPath.value.trim())
+    configPreview.value = preview
+    status.value = preview.ready ? 'Setup ready' : 'Needs attention'
+    statusClass.value = preview.ready ? 'status-ready' : 'status-error'
+    statusMessage.value = preview.message
+    return preview
+  } catch (error) {
+    const message = errorMessage(error, 'Could not check this IronVault settings file.')
+    configPreview.value = null
+    status.value = 'Needs attention'
+    statusClass.value = 'status-error'
+    statusMessage.value = message
+    return null
+  } finally {
+    isPreviewLoading.value = false
+  }
+}
+
 async function runBackup() {
   if (!canRunBackup.value) {
+    return
+  }
+
+  const preview = await refreshBackupPreview()
+
+  if (!preview?.ready) {
+    backupConfirmation.value = ''
     return
   }
 
@@ -170,7 +267,6 @@ async function runBackup() {
   status.value = 'Sealing'
   statusClass.value = 'status-waiting'
   statusMessage.value = 'IronVault is sealing a new backup snapshot...'
-  localStorage.setItem('ironvault-backup-config-path', configPath.value.trim())
 
   try {
     backupResult.value = await createBackup(configPath.value.trim())
@@ -179,10 +275,11 @@ async function runBackup() {
     statusMessage.value = 'Backup finished. Snapshot list refreshed.'
     backupConfirmation.value = ''
     await refreshSnapshots()
+    await refreshBackupPreview()
   } catch (error) {
     backupResult.value = {
       success: false,
-      message: error instanceof Error ? error.message : 'IronVault could not complete the backup.'
+      message: errorMessage(error, 'IronVault could not complete the backup.')
     }
     status.value = 'Backup failed'
     statusClass.value = 'status-error'
@@ -192,7 +289,10 @@ async function runBackup() {
   }
 }
 
-onMounted(refreshSnapshots)
+onMounted(async () => {
+  await refreshSnapshots()
+  await refreshBackupPreview()
+})
 </script>
 
 <style scoped>
@@ -291,6 +391,13 @@ onMounted(refreshSnapshots)
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
 .mini-note {
   margin: 0.6rem 0 0;
   font-size: 0.82rem;
@@ -320,7 +427,8 @@ onMounted(refreshSnapshots)
 }
 
 .mini-stats,
-.snapshot-detail-grid {
+.snapshot-detail-grid,
+.preview-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
@@ -332,7 +440,8 @@ onMounted(refreshSnapshots)
 }
 
 .mini-stats div,
-.snapshot-detail-grid div {
+.snapshot-detail-grid div,
+.preview-grid div {
   padding: 1rem;
   border: 1px solid var(--iv-border);
   border-radius: 16px;
@@ -340,7 +449,8 @@ onMounted(refreshSnapshots)
 }
 
 .mini-stats span,
-.snapshot-detail-grid span {
+.snapshot-detail-grid span,
+.preview-grid span {
   display: block;
   color: var(--iv-muted);
   font-size: 0.78rem;
@@ -350,11 +460,46 @@ onMounted(refreshSnapshots)
 }
 
 .mini-stats strong,
-.snapshot-detail-grid strong {
+.snapshot-detail-grid strong,
+.preview-grid strong {
   display: block;
   margin-top: 0.4rem;
-  font-size: 1.6rem;
+  overflow-wrap: anywhere;
+  font-size: 1.3rem;
   letter-spacing: -0.04em;
+}
+
+.preview-grid small {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--iv-muted);
+}
+
+.source-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.source-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--iv-border);
+  border-radius: 16px;
+  background: var(--iv-bg-soft);
+}
+
+.source-row strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.source-row small {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--iv-muted);
 }
 
 .result-panel pre {
@@ -373,8 +518,14 @@ onMounted(refreshSnapshots)
 
   .backup-grid,
   .mini-stats,
-  .snapshot-detail-grid {
+  .snapshot-detail-grid,
+  .preview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .source-row {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

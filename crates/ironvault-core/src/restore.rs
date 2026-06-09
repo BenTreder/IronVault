@@ -13,6 +13,7 @@ pub struct RestorePlan {
     pub snapshot: Snapshot,
     pub target: PathBuf,
     pub files: Vec<RestoreItem>,
+    pub conflicts: Vec<RestoreConflict>,
 }
 
 impl RestorePlan {
@@ -21,6 +22,7 @@ impl RestorePlan {
             snapshot,
             target,
             files: Vec::new(),
+            conflicts: Vec::new(),
         }
     }
 
@@ -29,9 +31,34 @@ impl RestorePlan {
         self.files.push(item);
     }
 
+    /// Add a restore conflict
+    pub fn add_conflict(&mut self, conflict: RestoreConflict) {
+        self.conflicts.push(conflict);
+    }
+
     /// Total files to restore
     pub fn file_count(&self) -> usize {
         self.files.len()
+    }
+
+    /// Total directories to restore
+    pub fn directory_count(&self) -> usize {
+        self.snapshot.directories.len()
+    }
+
+    /// Total symlinks to restore
+    pub fn symlink_count(&self) -> usize {
+        self.snapshot.symlinks.len()
+    }
+
+    /// Total restore conflicts
+    pub fn conflict_count(&self) -> usize {
+        self.conflicts.len()
+    }
+
+    /// Whether this plan is safe to execute
+    pub fn has_conflicts(&self) -> bool {
+        !self.conflicts.is_empty()
     }
 }
 
@@ -47,6 +74,24 @@ pub struct RestoreItem {
     pub mtime: DateTime<Utc>,
     pub chunk_hashes: Vec<String>,
     pub compression: String,
+}
+
+/// A restore conflict found during planning
+#[derive(Debug, Clone)]
+pub struct RestoreConflict {
+    pub source_path: String,
+    pub target_path: PathBuf,
+    pub kind: String,
+}
+
+impl RestoreConflict {
+    pub fn new(source_path: String, target_path: PathBuf, kind: impl Into<String>) -> Self {
+        Self {
+            source_path,
+            target_path,
+            kind: kind.into(),
+        }
+    }
 }
 
 /// Restore manager
@@ -90,8 +135,66 @@ impl RestoreManager {
             });
         }
 
-        info!(files = plan.file_count(), "Restore plan generated");
+        self.collect_target_conflicts(&mut plan)?;
+
+        info!(
+            files = plan.file_count(),
+            directories = plan.directory_count(),
+            symlinks = plan.symlink_count(),
+            conflicts = plan.conflict_count(),
+            "Restore plan generated"
+        );
         Ok(plan)
+    }
+
+    /// Collect existing target conflicts for files and symlinks.
+    fn collect_target_conflicts(&self, plan: &mut RestorePlan) -> Result<()> {
+        let file_conflicts: Vec<_> = plan
+            .files
+            .iter()
+            .filter(|item| Self::restore_target_exists(&item.target_path))
+            .map(|item| {
+                RestoreConflict::new(
+                    item.source_path.clone(),
+                    item.target_path.clone(),
+                    "file target already exists",
+                )
+            })
+            .collect();
+
+        for conflict in file_conflicts {
+            plan.add_conflict(conflict);
+        }
+
+        let symlink_conflicts: Vec<_> = plan
+            .snapshot
+            .symlinks
+            .iter()
+            .filter_map(|link| {
+                let target_path = Self::safe_restore_path(&plan.target, &link.path).ok()?;
+
+                if Self::restore_target_exists(&target_path) {
+                    Some(RestoreConflict::new(
+                        link.path.clone(),
+                        target_path,
+                        "symlink target already exists",
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for conflict in symlink_conflicts {
+            plan.add_conflict(conflict);
+        }
+
+        Ok(())
+    }
+
+    /// Check whether a restore target already exists, including symlinks.
+    fn restore_target_exists(target_path: &Path) -> bool {
+        fs::symlink_metadata(target_path).is_ok()
     }
 
     /// Build a safe restore path from a snapshot path.
@@ -147,8 +250,20 @@ impl RestoreManager {
             snapshot = plan.snapshot.name,
             target = plan.target.display().to_string(),
             files = plan.files.len(),
+            conflicts = plan.conflict_count(),
             "Starting restore"
         );
+
+        if plan.has_conflicts() {
+            let first = &plan.conflicts[0];
+            return Err(IronVaultError::Restore(format!(
+                "Vault door closed. Restore plan has {} conflict(s). First conflict: {} -> {} ({})",
+                plan.conflict_count(),
+                first.source_path,
+                first.target_path.display(),
+                first.kind
+            )));
+        }
 
         // Create target directory
         fs::create_dir_all(&plan.target)?;
@@ -192,7 +307,7 @@ impl RestoreManager {
 
     /// Reject any existing filesystem entry before restore writes to it.
     fn reject_existing_restore_target(target_path: &Path) -> Result<()> {
-        if fs::symlink_metadata(target_path).is_ok() {
+        if Self::restore_target_exists(target_path) {
             return Err(IronVaultError::Restore(format!(
                 "Refusing to overwrite existing restore target: {}",
                 target_path.display()
@@ -374,9 +489,44 @@ pub fn display_plan(plan: &RestorePlan) {
     println!("  Snapshot: {}", plan.snapshot.name);
     println!("  Target: {}", plan.target.display());
     println!("  Files: {}", plan.file_count());
+    println!("  Directories: {}", plan.directory_count());
+    println!("  Symlinks: {}", plan.symlink_count());
+    println!("  Conflicts: {}", plan.conflict_count());
+
+    if plan.has_conflicts() {
+        println!(
+            "\nVault door closed. IronVault found restore conflicts and will not overwrite them."
+        );
+        println!("\nConflicts:");
+        for conflict in &plan.conflicts {
+            println!(
+                "  {} -> {} ({})",
+                conflict.source_path,
+                conflict.target_path.display(),
+                conflict.kind
+            );
+        }
+    } else {
+        println!("\nVault check passed. Safe to restore.");
+    }
+
     println!("\nFiles to restore:");
     for item in &plan.files {
         println!("  {} -> {}", item.source_path, item.target_path.display());
+    }
+
+    if !plan.snapshot.directories.is_empty() {
+        println!("\nDirectories to restore:");
+        for dir in &plan.snapshot.directories {
+            println!("  {}", dir.path);
+        }
+    }
+
+    if !plan.snapshot.symlinks.is_empty() {
+        println!("\nSymlinks to restore:");
+        for link in &plan.snapshot.symlinks {
+            println!("  {} -> {}", link.path, link.target);
+        }
     }
 }
 

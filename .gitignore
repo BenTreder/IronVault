@@ -10,3 +10,4 @@ frontend/ironvault-gui/dist/
 frontend/ironvault-gui/.vite/
 frontend/ironvault-gui/src-tauri/target/
 frontend/ironvault-gui/src-tauri/gen/
+.ironvault-gui-live-source/

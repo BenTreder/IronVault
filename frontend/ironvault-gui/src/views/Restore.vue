@@ -155,11 +155,38 @@
         <h3>{{ restoreResult.success ? 'Restore complete' : 'Restore failed' }}</h3>
         <pre>{{ restoreResult.message }}</pre>
       <p class="field-help">
+        After restore, check inside the original folder name under your restore folder. Example: restore-folder/BackupTest/TestFile.txt.
+      </p>
+      <p class="field-help">
         Restored files are placed inside the folder you selected, using the original backed-up folder name.
       </p>
       </div>
     </section>
   </div>
+
+    <section v-if="plan" class="panel restore-location-guide">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow-small">Restore location</p>
+          <h3>Where will my files go?</h3>
+        </div>
+        <span class="status-badge">Safe layout</span>
+      </div>
+
+      <p>
+        {{ restoreLocationSummary }}
+      </p>
+
+      <div class="path-example">
+        <span>Example restored file path</span>
+        <strong>{{ restoreLocationExample }}</strong>
+      </div>
+
+      <p class="field-help">
+        This keeps the original folder structure together. So if you backed up a folder named BackupTest and restore into /tmp/restore, your file will be under /tmp/restore/BackupTest/.
+      </p>
+    </section>
+
 </template>
 
 <script setup lang="ts">
@@ -188,11 +215,23 @@ const isLoading = ref(false)
 const isRestoring = ref(false)
 const status = ref('Waiting')
 const statusClass = ref('status-waiting')
-const statusMessage = ref('Choose a snapshot and target path, then preview the restore plan.')
+const statusMessage = ref('Choose a snapshot and restore folder, then preview the restore plan.')
 
 const planHasRestorableItems = computed(() =>
   Boolean(plan.value && (plan.value.files > 0 || plan.value.directories > 0 || plan.value.symlinks > 0))
 )
+
+const cleanTargetPath = computed(() => targetPath.value.trim().replace(/\/+$/, ''))
+
+const restoreLocationExample = computed(() => {
+  const base = cleanTargetPath.value || '/tmp/ironvault-restore'
+  return `${base}/OriginalFolderName/YourFile.txt`
+})
+
+const restoreLocationSummary = computed(() => {
+  const base = cleanTargetPath.value || 'the folder you choose'
+  return `IronVault will restore the original backed-up folder inside ${base}.`
+})
 
 const canRestore = computed(() =>
   Boolean(plan.value?.safe_to_restore) &&
@@ -570,6 +609,43 @@ async function executeRestore() {
     grid-template-columns: 1fr;
   }
 }
+.field-help {
+  margin: 0.55rem 0 0;
+  color: var(--iv-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.restore-location-guide p {
+  color: var(--iv-muted);
+  line-height: 1.6;
+}
+
+.path-example {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--iv-border);
+  border-radius: 16px;
+  background: var(--iv-bg-soft);
+}
+
+.path-example span {
+  color: var(--iv-muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.path-example strong {
+  overflow-wrap: anywhere;
+  color: var(--iv-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.95rem;
+}
+
 .field-help {
   margin: 0.55rem 0 0;
   color: var(--iv-muted);

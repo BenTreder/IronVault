@@ -196,6 +196,31 @@ log_level = "info"
     )
     .unwrap();
 
+    let restore_plan_conflict_cmd = Command::new(bin)
+        .args(["restore-plan", "--repo"])
+        .arg(&repo)
+        .args(["--snapshot", "latest", "--target"])
+        .arg(&restore)
+        .output()
+        .unwrap();
+    assert!(
+        restore_plan_conflict_cmd.status.success(),
+        "restore-plan conflict check failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&restore_plan_conflict_cmd.stdout),
+        String::from_utf8_lossy(&restore_plan_conflict_cmd.stderr)
+    );
+    let restore_plan_conflict_stdout = String::from_utf8_lossy(&restore_plan_conflict_cmd.stdout);
+    assert!(
+        restore_plan_conflict_stdout.contains("Conflicts: 1"),
+        "restore-plan conflict stdout was:\n{}",
+        restore_plan_conflict_stdout
+    );
+    assert!(
+        restore_plan_conflict_stdout.contains("Vault door closed"),
+        "restore-plan conflict stdout was:\n{}",
+        restore_plan_conflict_stdout
+    );
+
     let restore_conflict_cmd = Command::new(bin)
         .args(["restore", "--repo"])
         .arg(&repo)
@@ -215,6 +240,31 @@ log_level = "info"
     );
 
     fs::remove_dir_all(&restore).unwrap();
+
+    let restore_plan_clean_cmd = Command::new(bin)
+        .args(["restore-plan", "--repo"])
+        .arg(&repo)
+        .args(["--snapshot", "latest", "--target"])
+        .arg(&restore)
+        .output()
+        .unwrap();
+    assert!(
+        restore_plan_clean_cmd.status.success(),
+        "restore-plan clean check failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&restore_plan_clean_cmd.stdout),
+        String::from_utf8_lossy(&restore_plan_clean_cmd.stderr)
+    );
+    let restore_plan_clean_stdout = String::from_utf8_lossy(&restore_plan_clean_cmd.stdout);
+    assert!(
+        restore_plan_clean_stdout.contains("Conflicts: 0"),
+        "restore-plan clean stdout was:\n{}",
+        restore_plan_clean_stdout
+    );
+    assert!(
+        restore_plan_clean_stdout.contains("Vault check passed"),
+        "restore-plan clean stdout was:\n{}",
+        restore_plan_clean_stdout
+    );
 
     let restore_cmd = Command::new(bin)
         .args(["restore", "--repo"])

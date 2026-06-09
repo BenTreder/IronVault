@@ -1,49 +1,33 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "IronVault",
+  "version": "0.1.0",
+  "identifier": "org.ironvault.gui",
   "build": {
-    "distDir": "../dist",
-    "devPath": "http://localhost:5173"
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
   },
-  "tauri": {
-    "bundle": {
-      "active": true,
-      "identifier": "org.ironvault.gui",
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "resources": ["../target/release/ironvault"],
-      "revision": "0.1.0",
-      "slug": "ironvault-gui",
-      "translator": "none",
-      "version": "0.1.0",
-      "windows": [
-        {
-          "iconPath": "icons/app.png",
-          "menu": true,
-          "title": "IronVault",
-          "width": 1200,
-          "height": 800
-        }
-      ]
-    },
-    "security": {
-      "csp": "default-src 'self'",
-      "devPort": 1420,
-      "framework": "vite"
-    },
+  "app": {
     "windows": [
       {
-        "alwaysOnTop": false,
-        "fullscreen": false,
-        "resizable": true,
+        "label": "main",
         "title": "IronVault - Backup Manager",
         "width": 1200,
         "height": 800,
+        "resizable": true,
+        "fullscreen": false,
         "decorations": true
       }
-    ]
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "icon": []
   }
 }

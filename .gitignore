@@ -8,3 +8,5 @@
 frontend/ironvault-gui/node_modules/
 frontend/ironvault-gui/dist/
 frontend/ironvault-gui/.vite/
+frontend/ironvault-gui/src-tauri/target/
+frontend/ironvault-gui/src-tauri/gen/

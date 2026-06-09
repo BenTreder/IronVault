@@ -1,0 +1,23 @@
+[package]
+name = "ironvault-gui"
+version = "0.1.0"
+description = "Desktop frontend for IronVault backup system"
+edition = "2021"
+license = "GPL-3.0-or-later"
+authors = ["Ben Treder"]
+
+[lib]
+name = "ironvault_gui_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "ironvault-gui"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

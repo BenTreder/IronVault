@@ -114,3 +114,32 @@ cargo fmt
 cargo check -p ironvault-core -p ironvault-cli
 cargo test -p ironvault-core -p ironvault-cli
 cargo test -p ironvault-cli --test mvp_backup_restore
+
+## Phase 30 GUI checkpoint
+
+Current GUI status after Phase 30:
+
+- Dashboard reads live vault info and verify status
+- Settings can save vault path
+- Settings can create a safe demo vault
+- Settings can create a real backup setup
+- Settings blocks unsafe backup storage locations inside the source folder
+- Backup page previews the selected IronVault settings file
+- Backup page shows folder to back up, storage folder, file counts, and readiness
+- Backup page requires typing SEAL before running backup
+- Snapshots page shows snapshot cards directly with counts and restore guidance
+- Restore page previews restore plans
+- Restore page explains where restored files go
+- Restore page requires typing RESTORE before running restore
+- Restore runs with overwrite refusal
+- CLI/core tests pass
+- Frontend build passes
+- Tauri backend check passes
+
+Next finalization work:
+
+- Final release checklist
+- Packaging/build decision
+- Native file picker decision
+- Final icon replacement
+- Release candidate tag

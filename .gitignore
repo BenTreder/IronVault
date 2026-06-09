@@ -3,3 +3,8 @@
 *.log
 .DS_Store
 /crates/ironvault-cli/.ironvault-cli-test-runs/
+
+# Frontend
+frontend/ironvault-gui/node_modules/
+frontend/ironvault-gui/dist/
+frontend/ironvault-gui/.vite/

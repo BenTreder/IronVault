@@ -153,6 +153,7 @@ impl RestoreManager {
         // Create target directory
         fs::create_dir_all(&plan.target)?;
 
+        self.preflight_target_conflicts(plan)?;
         self.create_directories(plan)?;
 
         // Restore files
@@ -173,6 +174,32 @@ impl RestoreManager {
             "Restore completed"
         );
         Ok(restored)
+    }
+
+    /// Refuse to restore files or symlinks over existing targets.
+    fn preflight_target_conflicts(&self, plan: &RestorePlan) -> Result<()> {
+        for item in &plan.files {
+            Self::reject_existing_restore_target(&item.target_path)?;
+        }
+
+        for link in &plan.snapshot.symlinks {
+            let target_path = Self::safe_restore_path(&plan.target, &link.path)?;
+            Self::reject_existing_restore_target(&target_path)?;
+        }
+
+        Ok(())
+    }
+
+    /// Reject any existing filesystem entry before restore writes to it.
+    fn reject_existing_restore_target(target_path: &Path) -> Result<()> {
+        if fs::symlink_metadata(target_path).is_ok() {
+            return Err(IronVaultError::Restore(format!(
+                "Refusing to overwrite existing restore target: {}",
+                target_path.display()
+            )));
+        }
+
+        Ok(())
     }
 
     /// Create directories from the snapshot before restoring files.
@@ -222,13 +249,7 @@ impl RestoreManager {
                 fs::create_dir_all(parent)?;
             }
 
-            if fs::symlink_metadata(&target_path).is_ok() {
-                if target_path.is_dir() {
-                    fs::remove_dir_all(&target_path)?;
-                } else {
-                    fs::remove_file(&target_path)?;
-                }
-            }
+            Self::reject_existing_restore_target(&target_path)?;
 
             #[cfg(unix)]
             {
@@ -291,6 +312,8 @@ impl RestoreManager {
     /// Restore a single file
     fn restore_file(&self, item: &RestoreItem) -> Result<bool> {
         let target_path = &item.target_path;
+
+        Self::reject_existing_restore_target(target_path)?;
 
         // Create parent directories
         if let Some(parent) = target_path.parent() {

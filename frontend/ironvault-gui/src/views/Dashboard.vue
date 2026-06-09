@@ -73,25 +73,11 @@
         </div>
 
         <p class="repo-path">{{ repoPath }}</p>
-
-        <div class="repo-form">
-          <label for="repoPath">Test vault path</label>
-          <div class="repo-form-row">
-            <input
-              id="repoPath"
-              v-model="repoPathDraft"
-              class="repo-input"
-              type="text"
-              placeholder="/tmp/ironvault-gui-live-test/repo"
-            />
-            <button class="mini-button" type="button" @click="saveRepoPath">
-              Save path
-            </button>
-          </div>
-        </div>
-
         <p class="panel-note">
           {{ bridgeNote }}
+        </p>
+        <p class="panel-note">
+          Change the vault path in Settings when you want IronVault to watch a different repo.
         </p>
       </article>
 
@@ -109,11 +95,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import {
-  defaultRepoPath,
   formatBytes,
   getRepoInfo,
   verifyRepository
 } from '../lib/ironvaultBridge'
+import { loadRepoPath } from '../lib/ironvaultSettings'
 
 const heroBadge = ref('Vault health looks good')
 const lastBackupTime = ref('Waiting for live data')
@@ -124,26 +110,11 @@ const status = ref('Bridge ready')
 const statusClass = ref('status-warning')
 const statusNote = ref('Dashboard is ready to read live IronVault JSON.')
 const chunkNote = ref('Stored backup data in the vault.')
-const repoPath = ref(loadSavedRepoPath())
-const repoPathDraft = ref(repoPath.value)
+const repoPath = ref(loadRepoPath())
 const bridgeNote = ref('Waiting for the Tauri command bridge to return live vault data.')
 const isBackingUp = ref(false)
 const isVerifying = ref(false)
 const isLoading = ref(false)
-
-function loadSavedRepoPath(): string {
-  return localStorage.getItem('ironvault-repo-path') || defaultRepoPath
-}
-
-function saveRepoPath() {
-  const nextPath = repoPathDraft.value.trim() || defaultRepoPath
-
-  repoPath.value = nextPath
-  repoPathDraft.value = nextPath
-  localStorage.setItem('ironvault-repo-path', nextPath)
-
-  loadDashboard()
-}
 
 async function loadDashboard() {
   isLoading.value = true
@@ -152,7 +123,6 @@ async function loadDashboard() {
     const info = await getRepoInfo(repoPath.value)
 
     repoPath.value = info.path
-    repoPathDraft.value = info.path
     repoSize.value = formatBytes(info.total_size)
     snapshotCount.value = info.snapshot_count
     totalChunks.value = info.total_chunks ?? null
@@ -423,42 +393,6 @@ onMounted(() => {
   background: var(--iv-bg-soft);
   color: var(--iv-muted-strong);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-.repo-form {
-  display: grid;
-  gap: 0.55rem;
-  margin-top: 1rem;
-}
-
-.repo-form label {
-  color: var(--iv-muted);
-  font-size: 0.78rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.repo-form-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.65rem;
-}
-
-.repo-input {
-  min-height: 40px;
-  width: 100%;
-  padding: 0.65rem 0.8rem;
-  border: 1px solid var(--iv-border);
-  border-radius: 999px;
-  background: var(--iv-bg-soft);
-  color: var(--iv-text);
-}
-
-@media (max-width: 640px) {
-  .repo-form-row {
-    grid-template-columns: 1fr;
-  }
 }
 
 .panel-note,

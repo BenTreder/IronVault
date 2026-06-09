@@ -14,6 +14,7 @@
         <RouterLink to="/backup">Backup</RouterLink>
         <RouterLink to="/restore">Restore</RouterLink>
         <RouterLink to="/snapshots">Snapshots</RouterLink>
+        <RouterLink to="/settings">Settings</RouterLink>
       </nav>
 
       <div class="sidebar-footer">
@@ -236,7 +237,7 @@ onMounted(() => {
   }
 
   .nav-links {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .nav-links a {

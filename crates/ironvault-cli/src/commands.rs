@@ -59,55 +59,105 @@ pub fn cmd_dry_run(config_path: &PathBuf) -> Result<()> {
 }
 
 /// List snapshots
-pub fn cmd_snapshots(repo: &PathBuf) -> Result<()> {
+pub fn cmd_snapshots(repo: &PathBuf, json: bool) -> Result<()> {
     info!("Listing snapshots from {}", repo.display());
 
     let safety = SafetyConfig::default();
     let repository = ironvault_core::repository::Repository::open(repo, &safety)?;
     let snapshots = repository.list_snapshots()?;
 
-    println!("Snapshots:");
-    println!("  Vault shelves found:");
-    for snapshot in &snapshots {
-        println!(
-            "  {} - {} files, {} bytes sealed",
-            snapshot.name,
-            snapshot.file_count(),
-            snapshot.total_size()
-        );
+    if json {
+        let snapshots_json: Vec<_> = snapshots
+            .iter()
+            .map(|snapshot| {
+                serde_json::json!({
+                    "name": snapshot.name,
+                    "files": snapshot.file_count(),
+                    "directories": snapshot.directory_count(),
+                    "symlinks": snapshot.symlink_count(),
+                    "total_size": snapshot.total_size(),
+                })
+            })
+            .collect();
+
+        let output = serde_json::json!({
+            "snapshot_count": snapshots_json.len(),
+            "snapshots": snapshots_json,
+        });
+
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Snapshots:");
+        println!("  Vault shelves found:");
+        for snapshot in &snapshots {
+            println!(
+                "  {} - {} files, {} bytes sealed",
+                snapshot.name,
+                snapshot.file_count(),
+                snapshot.total_size()
+            );
+        }
     }
+
     Ok(())
 }
 
 /// Show repository info
-pub fn cmd_info(repo: &PathBuf) -> Result<()> {
+pub fn cmd_info(repo: &PathBuf, json: bool) -> Result<()> {
     info!("Getting repository info for {}", repo.display());
 
     let safety = SafetyConfig::default();
     let repository = ironvault_core::repository::Repository::open(repo, &safety)?;
     let info = repository.info()?;
 
-    println!("Vault location: {}", info.path);
-    println!("Vault size: {} bytes", info.total_size);
-    println!("Vault pieces: {}", info.total_chunks);
-    println!("Snapshots sealed: {}", info.snapshot_count);
-    println!("Free space nearby: {} bytes", info.free_space);
+    if json {
+        let output = serde_json::json!({
+            "path": info.path,
+            "total_size": info.total_size,
+            "total_chunks": info.total_chunks,
+            "snapshot_count": info.snapshot_count,
+            "free_space": info.free_space,
+        });
+
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Vault location: {}", info.path);
+        println!("Vault size: {} bytes", info.total_size);
+        println!("Vault pieces: {}", info.total_chunks);
+        println!("Snapshots sealed: {}", info.snapshot_count);
+        println!("Free space nearby: {} bytes", info.free_space);
+    }
+
     Ok(())
 }
 
 /// Verify repository
-pub fn cmd_verify(repo: &PathBuf) -> Result<()> {
+pub fn cmd_verify(repo: &PathBuf, json: bool) -> Result<()> {
     info!("Verifying repository {}", repo.display());
 
     let safety = SafetyConfig::default();
     let repository = ironvault_core::repository::Repository::open(repo, &safety)?;
     let valid = repository.verify()?;
 
-    if valid {
-        println!("✓ Repository is valid. Every vault piece is accounted for.");
+    let message = if valid {
+        "Repository is valid. Every vault piece is accounted for."
     } else {
-        println!("✗ Repository has errors. The vault check found missing or damaged pieces.");
+        "Repository has errors. The vault check found missing or damaged pieces."
+    };
+
+    if json {
+        let output = serde_json::json!({
+            "valid": valid,
+            "message": message,
+        });
+
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else if valid {
+        println!("✓ {}", message);
+    } else {
+        println!("✗ {}", message);
     }
+
     Ok(())
 }
 

@@ -45,18 +45,27 @@ enum Commands {
         /// Repository path
         #[arg(short, long)]
         repo: PathBuf,
+        /// Output snapshots as JSON for GUI and automation use
+        #[arg(long)]
+        json: bool,
     },
     /// Show repository info
     Info {
         /// Repository path
         #[arg(short, long)]
         repo: PathBuf,
+        /// Output repository info as JSON for GUI and automation use
+        #[arg(long)]
+        json: bool,
     },
     /// Verify repository
     Verify {
         /// Repository path
         #[arg(short, long)]
         repo: PathBuf,
+        /// Output verification result as JSON for GUI and automation use
+        #[arg(long)]
+        json: bool,
     },
     /// Generate a restore plan
     RestorePlan {
@@ -119,9 +128,9 @@ fn main() -> Result<()> {
         Commands::Init { repo } => cmd_init(repo)?,
         Commands::Backup { config } => cmd_backup(config)?,
         Commands::DryRun { config } => cmd_dry_run(config)?,
-        Commands::Snapshots { repo } => cmd_snapshots(repo)?,
-        Commands::Info { repo } => cmd_info(repo)?,
-        Commands::Verify { repo } => cmd_verify(repo)?,
+        Commands::Snapshots { repo, json } => cmd_snapshots(repo, *json)?,
+        Commands::Info { repo, json } => cmd_info(repo, *json)?,
+        Commands::Verify { repo, json } => cmd_verify(repo, *json)?,
         Commands::RestorePlan {
             snapshot,
             target,

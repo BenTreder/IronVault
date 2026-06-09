@@ -190,6 +190,44 @@ log_level = "info"
     );
 
     fs::create_dir_all(restore.join("source")).unwrap();
+
+    let snapshots_json_cmd = Command::new(bin)
+        .args(["snapshots", "--repo"])
+        .arg(&repo)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        snapshots_json_cmd.status.success(),
+        "snapshots JSON failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&snapshots_json_cmd.stdout),
+        String::from_utf8_lossy(&snapshots_json_cmd.stderr)
+    );
+    let snapshots_json: serde_json::Value =
+        serde_json::from_slice(&snapshots_json_cmd.stdout).unwrap();
+    assert_eq!(snapshots_json["snapshot_count"], 1);
+    assert_eq!(snapshots_json["snapshots"][0]["files"], 3);
+    assert_eq!(snapshots_json["snapshots"][0]["directories"], 3);
+    assert_eq!(snapshots_json["snapshots"][0]["symlinks"], 1);
+
+    let info_json_cmd = Command::new(bin)
+        .args(["info", "--repo"])
+        .arg(&repo)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        info_json_cmd.status.success(),
+        "info JSON failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&info_json_cmd.stdout),
+        String::from_utf8_lossy(&info_json_cmd.stderr)
+    );
+    let info_json: serde_json::Value = serde_json::from_slice(&info_json_cmd.stdout).unwrap();
+    assert_eq!(info_json["snapshot_count"], 1);
+    assert!(info_json["total_chunks"].as_u64().is_some());
+    assert!(info_json["total_size"].as_u64().unwrap() > 0);
+    assert!(info_json["path"].as_str().unwrap().contains(".ironvault"));
+
     fs::write(
         restore.join("source/test.txt"),
         "existing file should stay safe\n",
@@ -444,6 +482,26 @@ log_level = "info"
         verify_good_stdout
     );
 
+    let verify_good_json = Command::new(bin)
+        .args(["verify", "--repo"])
+        .arg(&repo)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        verify_good_json.status.success(),
+        "verify JSON failed before corruption\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&verify_good_json.stdout),
+        String::from_utf8_lossy(&verify_good_json.stderr)
+    );
+    let verify_good_json_value: serde_json::Value =
+        serde_json::from_slice(&verify_good_json.stdout).unwrap();
+    assert_eq!(verify_good_json_value["valid"], true);
+    assert!(verify_good_json_value["message"]
+        .as_str()
+        .unwrap()
+        .contains("Repository is valid"));
+
     let corrupt_chunk =
         first_file(&repo.join("objects")).expect("expected at least one chunk object");
     fs::remove_file(&corrupt_chunk).unwrap();
@@ -465,6 +523,26 @@ log_level = "info"
         "verify stdout after corruption was:\n{}",
         verify_bad_stdout
     );
+
+    let verify_bad_json = Command::new(bin)
+        .args(["verify", "--repo"])
+        .arg(&repo)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        verify_bad_json.status.success(),
+        "verify JSON should report errors without crashing\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&verify_bad_json.stdout),
+        String::from_utf8_lossy(&verify_bad_json.stderr)
+    );
+    let verify_bad_json_value: serde_json::Value =
+        serde_json::from_slice(&verify_bad_json.stdout).unwrap();
+    assert_eq!(verify_bad_json_value["valid"], false);
+    assert!(verify_bad_json_value["message"]
+        .as_str()
+        .unwrap()
+        .contains("Repository has errors"));
 
     let _ = fs::remove_dir_all(root);
 }

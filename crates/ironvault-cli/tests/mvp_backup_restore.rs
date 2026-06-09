@@ -221,6 +221,30 @@ log_level = "info"
         restore_plan_conflict_stdout
     );
 
+    let restore_plan_conflict_json_cmd = Command::new(bin)
+        .args(["restore-plan", "--repo"])
+        .arg(&repo)
+        .args(["--snapshot", "latest", "--target"])
+        .arg(&restore)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        restore_plan_conflict_json_cmd.status.success(),
+        "restore-plan conflict JSON failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&restore_plan_conflict_json_cmd.stdout),
+        String::from_utf8_lossy(&restore_plan_conflict_json_cmd.stderr)
+    );
+    let restore_plan_conflict_json: serde_json::Value =
+        serde_json::from_slice(&restore_plan_conflict_json_cmd.stdout).unwrap();
+    assert_eq!(restore_plan_conflict_json["files"], 3);
+    assert_eq!(restore_plan_conflict_json["conflict_count"], 1);
+    assert_eq!(restore_plan_conflict_json["safe_to_restore"], false);
+    assert_eq!(
+        restore_plan_conflict_json["conflicts"][0]["kind"],
+        "file target already exists"
+    );
+
     let restore_conflict_cmd = Command::new(bin)
         .args(["restore", "--repo"])
         .arg(&repo)
@@ -265,6 +289,32 @@ log_level = "info"
         "restore-plan clean stdout was:\n{}",
         restore_plan_clean_stdout
     );
+
+    let restore_plan_clean_json_cmd = Command::new(bin)
+        .args(["restore-plan", "--repo"])
+        .arg(&repo)
+        .args(["--snapshot", "latest", "--target"])
+        .arg(&restore)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        restore_plan_clean_json_cmd.status.success(),
+        "restore-plan clean JSON failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&restore_plan_clean_json_cmd.stdout),
+        String::from_utf8_lossy(&restore_plan_clean_json_cmd.stderr)
+    );
+    let restore_plan_clean_json: serde_json::Value =
+        serde_json::from_slice(&restore_plan_clean_json_cmd.stdout).unwrap();
+    assert_eq!(restore_plan_clean_json["files"], 3);
+    assert_eq!(restore_plan_clean_json["directories"], 3);
+    assert_eq!(restore_plan_clean_json["symlinks"], 1);
+    assert_eq!(restore_plan_clean_json["conflict_count"], 0);
+    assert_eq!(restore_plan_clean_json["safe_to_restore"], true);
+    assert!(restore_plan_clean_json["conflicts"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 
     let restore_cmd = Command::new(bin)
         .args(["restore", "--repo"])

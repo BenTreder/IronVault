@@ -112,7 +112,12 @@ pub fn cmd_verify(repo: &PathBuf) -> Result<()> {
 }
 
 /// Generate restore plan
-pub fn cmd_restore_plan(snapshot: &str, target: &PathBuf, repo: &PathBuf) -> Result<()> {
+pub fn cmd_restore_plan(
+    snapshot: &str,
+    target: &PathBuf,
+    repo: &PathBuf,
+    json: bool,
+) -> Result<()> {
     info!(
         "Generating restore plan for {} to {}",
         snapshot,
@@ -126,7 +131,38 @@ pub fn cmd_restore_plan(snapshot: &str, target: &PathBuf, repo: &PathBuf) -> Res
     let manager = ironvault_core::restore::RestoreManager::new(repo);
     let plan = manager.generate_plan(&snap, target)?;
 
-    ironvault_core::restore::display_plan(&plan);
+    if json {
+        let conflicts: Vec<_> = plan
+            .conflicts
+            .iter()
+            .map(|conflict| {
+                serde_json::json!({
+                    "source_path": conflict.source_path,
+                    "target_path": conflict.target_path.display().to_string(),
+                    "kind": conflict.kind,
+                })
+            })
+            .collect();
+
+        let total_size: u64 = plan.files.iter().map(|item| item.size).sum();
+
+        let output = serde_json::json!({
+            "snapshot": plan.snapshot.name,
+            "target": plan.target.display().to_string(),
+            "files": plan.file_count(),
+            "directories": plan.directory_count(),
+            "symlinks": plan.symlink_count(),
+            "total_size": total_size,
+            "conflict_count": plan.conflict_count(),
+            "safe_to_restore": !plan.has_conflicts(),
+            "conflicts": conflicts,
+        });
+
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        ironvault_core::restore::display_plan(&plan);
+    }
+
     Ok(())
 }
 

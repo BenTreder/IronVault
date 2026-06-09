@@ -69,6 +69,9 @@ enum Commands {
         /// Repository path
         #[arg(short, long)]
         repo: PathBuf,
+        /// Output restore plan as JSON for GUI and automation use
+        #[arg(long)]
+        json: bool,
     },
     /// Execute a restore
     Restore {
@@ -120,7 +123,8 @@ fn main() -> Result<()> {
             snapshot,
             target,
             repo,
-        } => cmd_restore_plan(snapshot, target, repo)?,
+            json,
+        } => cmd_restore_plan(snapshot, target, repo, *json)?,
         Commands::Restore {
             snapshot,
             target,

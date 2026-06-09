@@ -43,7 +43,7 @@
           {{ snapshotStatusMessage }}
         </p>
 
-        <label class="setting-label" for="targetPath">Restore target</label>
+        <label class="setting-label" for="targetPath">Restore into folder</label>
         <input
           id="targetPath"
           v-model="targetPath"
@@ -154,6 +154,9 @@
         <p class="eyebrow-small">Result</p>
         <h3>{{ restoreResult.success ? 'Restore complete' : 'Restore failed' }}</h3>
         <pre>{{ restoreResult.message }}</pre>
+      <p class="field-help">
+        Restored files are placed inside the folder you selected, using the original backed-up folder name.
+      </p>
       </div>
     </section>
   </div>
@@ -567,4 +570,11 @@ async function executeRestore() {
     grid-template-columns: 1fr;
   }
 }
+.field-help {
+  margin: 0.55rem 0 0;
+  color: var(--iv-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
 </style>

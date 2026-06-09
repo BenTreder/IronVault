@@ -51,7 +51,7 @@
         <p class="eyebrow-small">Demo helper</p>
         <h3>Set up a safe test vault</h3>
         <p>
-          Creates a small source folder outside /tmp, writes a matching config, initializes the test repo if needed, then saves the paths for the GUI.
+          Creates a small source folder, writes a matching config, initializes the test repo if needed, then saves the paths for the GUI.
         </p>
 
         <button class="iv-button iv-button-primary" type="button" @click="setupDemoVault" :disabled="isSettingUp">
@@ -76,6 +76,72 @@
           </dl>
         </div>
       </article>
+
+      <article class="panel helper-panel real-helper">
+        <p class="eyebrow-small">Real backup setup</p>
+        <h3>Set up your own backup</h3>
+        <p>
+          Choose the folder you want to back up, where IronVault should store the backup vault, and where the app should save its settings file.
+        </p>
+
+        <label class="setting-label" for="customSourcePath">Folder to back up</label>
+        <input
+          id="customSourcePath"
+          v-model="customSourcePath"
+          class="settings-input"
+          type="text"
+          placeholder="/home/chr0nichacker/Documents"
+        />
+        <p class="field-help">
+          Pick the folder you want IronVault to protect. Start small, like Documents, before backing up huge folders.
+        </p>
+
+        <label class="setting-label" for="customRepoPath">Backup storage folder</label>
+        <input
+          id="customRepoPath"
+          v-model="customRepoPath"
+          class="settings-input"
+          type="text"
+          placeholder="/home/chr0nichacker/IronVaultBackups"
+        />
+        <p class="field-help">
+          This is where the backup vault lives. For real use, this should usually be on a backup drive, not inside the folder being backed up.
+        </p>
+
+        <label class="setting-label" for="customConfigPath">IronVault settings file</label>
+        <input
+          id="customConfigPath"
+          v-model="customConfigPath"
+          class="settings-input"
+          type="text"
+          placeholder="/home/chr0nichacker/.config/ironvault/ironvault.toml"
+        />
+        <p class="field-help">
+          This is just the small settings file IronVault uses when you click Run backup.
+        </p>
+
+        <button class="iv-button iv-button-primary setup-real-button" type="button" @click="setupRealVault" :disabled="isCustomSettingUp">
+          {{ isCustomSettingUp ? 'Creating...' : 'Create backup setup' }}
+        </button>
+
+        <div v-if="customSetupResult" class="result-card">
+          <p class="eyebrow-small">Saved paths</p>
+          <dl>
+            <div>
+              <dt>Vault</dt>
+              <dd>{{ customSetupResult.repo_path }}</dd>
+            </div>
+            <div>
+              <dt>Config</dt>
+              <dd>{{ customSetupResult.config_path }}</dd>
+            </div>
+            <div>
+              <dt>Source</dt>
+              <dd>{{ customSetupResult.source_path }}</dd>
+            </div>
+          </dl>
+        </div>
+      </article>
     </section>
 
     <section class="panel note-panel">
@@ -92,7 +158,9 @@
 import { ref } from 'vue'
 import {
   defaultRepoPath,
+  setupCustomVault,
   setupTestVault,
+  type SetupCustomVaultResult,
   type SetupTestVaultResult
 } from '../lib/ironvaultBridge'
 import {
@@ -109,7 +177,13 @@ const message = ref('Vault path loaded from local settings.')
 const status = ref('Ready')
 const statusClass = ref('status-ready')
 const isSettingUp = ref(false)
+const isCustomSettingUp = ref(false)
 const setupResult = ref<SetupTestVaultResult | null>(null)
+const customSetupResult = ref<SetupCustomVaultResult | null>(null)
+
+const customSourcePath = ref(localStorage.getItem('ironvault-custom-source-path') || '/home/chr0nichacker/Documents')
+const customRepoPath = ref(localStorage.getItem('ironvault-custom-repo-path') || '/home/chr0nichacker/IronVaultBackups')
+const customConfigPath = ref(localStorage.getItem('ironvault-custom-config-path') || '/home/chr0nichacker/.config/ironvault/ironvault.toml')
 
 function markSaved(savedPath: string, savedMessage: string) {
   repoPath.value = savedPath
@@ -161,6 +235,44 @@ async function setupDemoVault() {
     isSettingUp.value = false
   }
 }
+
+async function setupRealVault() {
+  isCustomSettingUp.value = true
+  customSetupResult.value = null
+  status.value = 'Setting up'
+  statusClass.value = 'status-waiting'
+  message.value = 'Creating your backup setup and initializing the vault if needed...'
+
+  localStorage.setItem('ironvault-custom-source-path', customSourcePath.value.trim())
+  localStorage.setItem('ironvault-custom-repo-path', customRepoPath.value.trim())
+  localStorage.setItem('ironvault-custom-config-path', customConfigPath.value.trim())
+
+  try {
+    const result = await setupCustomVault(
+      customSourcePath.value.trim(),
+      customRepoPath.value.trim(),
+      customConfigPath.value.trim()
+    )
+
+    customSetupResult.value = result
+
+    saveRepoPath(result.repo_path)
+    localStorage.setItem(backupConfigStorageKey, result.config_path)
+
+    repoPath.value = result.repo_path
+    status.value = 'Backup setup ready'
+    statusClass.value = 'status-ready'
+    message.value = `${result.message} Backup config saved for the Backup page.`
+  } catch (error) {
+    status.value = 'Needs attention'
+    statusClass.value = 'status-error'
+    message.value = error instanceof Error
+      ? error.message
+      : 'Could not create the backup setup.'
+  } finally {
+    isCustomSettingUp.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -206,7 +318,7 @@ async function setupDemoVault() {
 
 .settings-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
   gap: 1rem;
 }
 
@@ -214,6 +326,12 @@ async function setupDemoVault() {
 .result-card {
   padding: 1.25rem;
   border-radius: var(--iv-radius-md);
+}
+
+.main-panel,
+.real-helper,
+.note-panel {
+  grid-column: 1 / -1;
 }
 
 .panel-heading {
@@ -259,10 +377,21 @@ async function setupDemoVault() {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+.field-help {
+  margin: 0.55rem 0 0;
+  color: var(--iv-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.setup-real-button {
   margin-top: 1rem;
 }
 
@@ -328,6 +457,12 @@ async function setupDemoVault() {
 
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .main-panel,
+  .real-helper,
+  .note-panel {
+    grid-column: auto;
   }
 }
 </style>

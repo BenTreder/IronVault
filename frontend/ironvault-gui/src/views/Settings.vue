@@ -78,13 +78,13 @@
       </article>
 
       <article class="panel helper-panel real-helper">
-        <p class="eyebrow-small">Real setup helper</p>
-        <h3>Create a backup config for your folder</h3>
+        <p class="eyebrow-small">Real backup setup</p>
+        <h3>Set up your own backup</h3>
         <p>
-          Enter a source folder, vault repo path, and config file path. IronVault will write a valid config and initialize the repo if needed.
+          Choose the folder you want to back up, where IronVault should store the backup vault, and where the app should save its settings file.
         </p>
 
-        <label class="setting-label" for="customSourcePath">Source folder</label>
+        <label class="setting-label" for="customSourcePath">Folder to back up</label>
         <input
           id="customSourcePath"
           v-model="customSourcePath"
@@ -92,17 +92,23 @@
           type="text"
           placeholder="/home/chr0nichacker/Documents"
         />
+        <p class="field-help">
+          Pick the folder you want IronVault to protect. Start small, like Documents, before backing up huge folders.
+        </p>
 
-        <label class="setting-label" for="customRepoPath">Vault repo path</label>
+        <label class="setting-label" for="customRepoPath">Backup storage folder</label>
         <input
           id="customRepoPath"
           v-model="customRepoPath"
           class="settings-input"
           type="text"
-          placeholder="/home/chr0nichacker/IronVaultBackups/repo"
+          placeholder="/home/chr0nichacker/IronVaultBackups"
         />
+        <p class="field-help">
+          This is where the backup vault lives. For real use, this should usually be on a backup drive, not inside the folder being backed up.
+        </p>
 
-        <label class="setting-label" for="customConfigPath">Config file path</label>
+        <label class="setting-label" for="customConfigPath">IronVault settings file</label>
         <input
           id="customConfigPath"
           v-model="customConfigPath"
@@ -110,9 +116,12 @@
           type="text"
           placeholder="/home/chr0nichacker/.config/ironvault/ironvault.toml"
         />
+        <p class="field-help">
+          This is just the small settings file IronVault uses when you click Run backup.
+        </p>
 
         <button class="iv-button iv-button-primary setup-real-button" type="button" @click="setupRealVault" :disabled="isCustomSettingUp">
-          {{ isCustomSettingUp ? 'Creating...' : 'Create real backup setup' }}
+          {{ isCustomSettingUp ? 'Creating...' : 'Create backup setup' }}
         </button>
 
         <div v-if="customSetupResult" class="result-card">
@@ -173,7 +182,7 @@ const setupResult = ref<SetupTestVaultResult | null>(null)
 const customSetupResult = ref<SetupCustomVaultResult | null>(null)
 
 const customSourcePath = ref(localStorage.getItem('ironvault-custom-source-path') || '/home/chr0nichacker/Documents')
-const customRepoPath = ref(localStorage.getItem('ironvault-custom-repo-path') || '/home/chr0nichacker/IronVaultBackups/repo')
+const customRepoPath = ref(localStorage.getItem('ironvault-custom-repo-path') || '/home/chr0nichacker/IronVaultBackups')
 const customConfigPath = ref(localStorage.getItem('ironvault-custom-config-path') || '/home/chr0nichacker/.config/ironvault/ironvault.toml')
 
 function markSaved(savedPath: string, savedMessage: string) {
@@ -232,7 +241,7 @@ async function setupRealVault() {
   customSetupResult.value = null
   status.value = 'Setting up'
   statusClass.value = 'status-waiting'
-  message.value = 'Creating real vault config and initializing the repo if needed...'
+  message.value = 'Creating your backup setup and initializing the vault if needed...'
 
   localStorage.setItem('ironvault-custom-source-path', customSourcePath.value.trim())
   localStorage.setItem('ironvault-custom-repo-path', customRepoPath.value.trim())
@@ -251,7 +260,7 @@ async function setupRealVault() {
     localStorage.setItem(backupConfigStorageKey, result.config_path)
 
     repoPath.value = result.repo_path
-    status.value = 'Real vault ready'
+    status.value = 'Backup setup ready'
     statusClass.value = 'status-ready'
     message.value = `${result.message} Backup config saved for the Backup page.`
   } catch (error) {
@@ -259,7 +268,7 @@ async function setupRealVault() {
     statusClass.value = 'status-error'
     message.value = error instanceof Error
       ? error.message
-      : 'Could not set up the real vault config.'
+      : 'Could not create the backup setup.'
   } finally {
     isCustomSettingUp.value = false
   }
@@ -366,6 +375,13 @@ async function setupRealVault() {
   background: var(--iv-bg-soft);
   color: var(--iv-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.field-help {
+  margin: 0.55rem 0 0;
+  color: var(--iv-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .button-row {
